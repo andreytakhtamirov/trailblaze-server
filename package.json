@@ -6,8 +6,8 @@
     "start": "node ./bin/www"
   },
   "engines": {
-    "node": "17.6.0",
-    "npm": "8.19.3"
+    "node": ">= 18.0.0",
+    "npm": ">= 8.4.0"
   },
   "dependencies": {
     "cookie-parser": "~1.4.4",
@@ -16,6 +16,6 @@
     "express": "^4.18.2",
     "http-errors": "~1.6.3",
     "morgan": "~1.9.1",
-    "node": "^17.6.0"
+    "node": "^18.12.0"
   }
 }

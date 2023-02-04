@@ -2,24 +2,17 @@
 # Build a Node.js Express app and deploy it to Azure as a Linux web app.
 # Add steps that analyze code, save build artifacts, deploy, and more:
 # https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
-
 trigger:
 - main
-
 variables:
-
   # Azure Resource Manager connection created during pipeline creation
   azureSubscription: 'e04679c1-79b0-47c2-bef6-78960b1f5244'
-
   # Web app name
   webAppName: 'trailblaze'
-
   # Environment name
   environmentName: 'trailblaze'
-
   # Agent VM image name
   vmImageName: 'ubuntu-latest'
-
 stages:
 - stage: Build
   displayName: Build stage
@@ -28,19 +21,16 @@ stages:
     displayName: Build
     pool:
       vmImage: $(vmImageName)
-
     steps:
     - task: NodeTool@0
       inputs:
-        versionSpec: '17.x'
+        versionSpec: '18.x'
       displayName: 'Install Node.js'
-
     - script: |
         npm install
         npm run build --if-present
         npm run test --if-present
       displayName: 'npm install, build and test'
-
     - task: ArchiveFiles@2
       displayName: 'Archive files'
       inputs:
@@ -49,10 +39,8 @@ stages:
         archiveType: zip
         archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
         replaceExistingArchive: true
-
     - upload: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
       artifact: drop
-
 - stage: Deploy
   displayName: Deploy stage
   dependsOn: Build
@@ -73,6 +61,6 @@ stages:
               azureSubscription: $(azureSubscription)
               appType: webAppLinux
               appName: $(webAppName)
-              runtimeStack: 'NODE|17.6.0'
+              runtimeStack: 'NODE|18.13.0'
               package: $(Pipeline.Workspace)/drop/$(Build.BuildId).zip
               startUpCommand: 'npm run start'
