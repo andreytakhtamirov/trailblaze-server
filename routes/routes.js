@@ -2,6 +2,7 @@ var express = require('express');
 var router = express.Router();
 const { expressjwt: jwt } = require("express-jwt");
 const jwksRsa = require('jwks-rsa');
+const fetch = require("node-fetch");
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
