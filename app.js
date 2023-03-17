@@ -24,14 +24,18 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Enable the use of request body parsing middleware
-app.use(bodyParser.json());
+app.use(bodyParser.json({
+  // This is needed to be able to accept 
+  //  large route data in the request body.
+  limit: '50mb'
+}));
 app.use(bodyParser.urlencoded({
   extended: true
 }));
 
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
-app.use('/create-route', routesRouter);
+app.use('/routes', routesRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
