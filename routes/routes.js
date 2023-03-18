@@ -81,8 +81,7 @@ async function getMapboxRoute(parsedData) {
     const routeOptions = {
         annotations: [
             'distance',
-            'duration',
-            'speed'
+            'duration'
         ],
         exclude: ['ferry'],
         steps: true,
