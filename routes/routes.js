@@ -116,6 +116,7 @@ async function getInfoAboutRoute(data) {
     let coordinateLookupInterval = Math.round(scalingFactor / 2);   // Interval for coordinate surface lookup.
 
     let coordinatesEveryInterval = [];
+    let distancesEveryInterval = [];
     let lastCoordinate = [];
 
     const surfaceAggregates = {};
@@ -136,6 +137,7 @@ async function getInfoAboutRoute(data) {
                 if (lastCoordinate.length == 0) {
                     lastCoordinate = coordinate;
                     coordinatesEveryInterval.push(lastCoordinate);
+                    distancesEveryInterval.push(0);
                 }
 
                 if (lastCoordinate !== coordinate) {
@@ -143,6 +145,9 @@ async function getInfoAboutRoute(data) {
                     if (distance >= pointDistanceThreshold) {
                         lastCoordinate = coordinate;
                         coordinatesEveryInterval.push(lastCoordinate);
+
+                        // Round associated distance to 2 decimal places.
+                        distancesEveryInterval.push(Math.round(distance * 100) / 100);
                     }
                 }
             }
@@ -196,7 +201,7 @@ async function getInfoAboutRoute(data) {
     // For elevation there is an API where we can batch lookup coordinates.
     let elevationMetrics = {};
     elevationMetrics.elevations = await getElevationsFromCoordinates(coordinatesEveryInterval);
-    elevationMetrics.pointDistance = pointDistanceThreshold;
+    elevationMetrics.distances = distancesEveryInterval;
 
     const metrics = {
         "surfaceMetrics": surfaceMetrics,
@@ -240,7 +245,7 @@ async function getElevationsFromCoordinates(coordinates) {
     const joinedCoordinates = coordinates.map(coord => coord.join(',')).join('|');
 
     try {
-        const response = await fetch(`https://api.opentopodata.org/v1/test-dataset?locations=${joinedCoordinates}`);
+        const response = await fetch(`https://api.opentopodata.org/v1/srtm30m?locations=${joinedCoordinates}`);
         const data = await response.json();
         if (response.status !== 200) {
             console.log(data);
