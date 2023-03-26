@@ -6,6 +6,9 @@ const fetch = require("node-fetch");
 const turf = require("@turf/turf");
 const polyline = require('@mapbox/polyline');
 
+// Max number of coordinates which Optimization V1 (route calculation API) will take.
+const MAX_WAYPOINTS_COUNT = 12;
+
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
 if (process.env.NODE_ENV !== 'production') {
@@ -41,7 +44,24 @@ router.post('/create-route', verifyAppToken, checkJwt, function (req, res) {
         const parsedData = JSON.parse(JSON.stringify(req.body)).nameValuePairs;
         getMapboxRoute(parsedData)
             .then(data => {
-                res.status(200).send(data);
+                getPoiAlongRoute(data.routes[0], parsedData.waypoints.values.length)
+                    .then(pointsOfInterest => {
+                        console.log("poi: " + JSON.stringify(pointsOfInterest));
+                        getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest)
+                            .then(optimizedData => {
+                                // Optimize API returns routes inside a "trips" array.
+                                // Rename this field to "routes" so our client can process it.
+                                optimizedData.routes = optimizedData.trips;
+                                delete optimizedData.trips;
+                                res.status(200).send(optimizedData);
+                            })
+                            .catch(error => {
+                                // If we fail to create a route with improvements,
+                                //  we might be able to return the normal route instead.
+                                console.error(error);
+                                res.status(500).send('Error fetching route improvements.');
+                            });
+                    })
             })
             .catch(error => {
                 console.error(error);
@@ -71,7 +91,6 @@ router.post('/route-metrics', verifyAppToken, function (req, res) {
 async function getMapboxRoute(parsedData) {
     const accessToken = process.env.MAPBOX_API_KEY;
     const profile = parsedData.profile;
-    const distance = parsedData.distance; // Unused for now
 
     const waypoints = parsedData.waypoints.values.map((wp) => {
         const { coordinates } = JSON.parse(wp);
@@ -85,7 +104,9 @@ async function getMapboxRoute(parsedData) {
         ],
         exclude: ['ferry'],
         steps: true,
-        alternatives: true,
+        // We don't need alternatives anymore since we'll be
+        //  making improvements to the first route we get.
+        alternatives: false,
         overview: 'full',
         geometries: 'polyline6'
     };
@@ -101,6 +122,192 @@ async function getMapboxRoute(parsedData) {
     } catch (error) {
         return console.error(error);
     }
+}
+
+async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) {
+    // The Optimization API differs from the Directions API since it aims to optimize
+    //  navigation for the waypoints provided. We'll no longer need to ask the user to
+    //  specify the waypoints in any particular order.
+    const accessToken = process.env.MAPBOX_API_KEY;
+    const profile = parsedData.profile;
+    const roundTrip = false; // This could be set by the client.
+
+    // TODO since "destination" is set to "last", the last user provided coordinate
+    //  should be the last coordinate in the total waypoints string.
+
+    const waypoints = parsedData.waypoints.values.map((wp) => {
+        const { coordinates } = JSON.parse(wp);
+        return `${coordinates[0]},${coordinates[1]}`;
+    }).join(';');
+
+    const additionalWaypointsString = pointsOfInterest.map((wp) => {
+        return `${wp.coordinates[0]},${wp.coordinates[1]}`;
+    }).join(';');
+
+    let finalWaypointsString = `${waypoints}`;
+
+    // If there are additional waypoints, append them to the total waypoints.
+    if (additionalWaypointsString.length > 0) {
+        finalWaypointsString += `;${additionalWaypointsString}`;
+    }
+
+    console.log(finalWaypointsString);
+
+    const routeOptions = {
+        annotations: [
+            'distance',
+            'duration'
+        ],
+        steps: true,
+        overview: 'full',
+        geometries: 'polyline6',
+        source: 'first',
+        destination: 'last',
+        roundtrip: roundTrip
+    };
+
+    try {
+        const response = await fetch(`https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${finalWaypointsString}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
+        console.log("Mapbox response status: " + response.status);
+        const data = await response.json();
+        if (response.status !== 200) {
+            console.log(data);
+        }
+        return data;
+    } catch (error) {
+        return console.error(error);
+    }
+}
+
+async function getPoiAlongRoute(route, userWaypointsLength) {
+    if (route.legs == null || route.legs.length == 0) {
+        console.log("Can't get route info: route doesn't have any legs");
+        return null;
+    }
+
+    // Will take points every 1km to look up features in a 1km radius around them.
+    let pointDistanceThreshold = 1000;
+
+    let coordinatesEveryInterval = [];
+    let distancesEveryInterval = [];
+    let lastCoordinate = [];
+
+    for (const leg of route.legs) {
+        const steps = leg.steps;
+
+        // Loop through the steps array to get the coordinates
+        for (const step of steps) {
+            const geometry = step.geometry;
+            const coordinates = polyline.decode(geometry, 6);
+
+            // Aggregate coordinates every interval (scaled to route 
+            //  distance) to fetch elevation later.
+            for (let i = 0; i < coordinates.length; i++) {
+                const coordinate = coordinates[i];
+
+                if (lastCoordinate.length == 0) {
+                    lastCoordinate = coordinate;
+                    coordinatesEveryInterval.push(lastCoordinate);
+                    distancesEveryInterval.push(0);
+                }
+
+                if (lastCoordinate !== coordinate) {
+                    let distance = turf.distance(lastCoordinate, coordinate, { units: 'meters' });
+                    if (distance >= pointDistanceThreshold) {
+                        lastCoordinate = coordinate;
+                        coordinatesEveryInterval.push(lastCoordinate);
+
+                        // Round associated distance to 2 decimal places.
+                        distancesEveryInterval.push(Math.round(distance * 100) / 100);
+                    }
+                }
+            }
+        };
+    }
+
+    let query = getOverpassQueryForCoordinates(coordinatesEveryInterval);
+    let points = await getPointsFromQuery(query);
+    if (points == null) {
+        console.log("Error. No points returned from OSM.");
+        return;
+    }
+
+    // Aggregate all the coordinates for every named trail/park.
+    // We'll also grab the number of tags (added by OpenStreetMap users)
+    //  for that feature. It's assumed that the more tags a feature has,
+    //  the more important it is.
+    const count = {};
+    points.forEach(point => {
+        const name = point.tags.name;
+        if (name in count) {
+            count[name].count += 1;
+            count[name].coordinates.push([point.center.lon, point.center.lat]);
+            count[name].numTags.push(Object.keys(point.tags).length);
+        } else {
+            count[name] = {
+                count: 1,
+                coordinates: [[point.center.lon, point.center.lat]],
+                numTags: [Object.keys(point.tags).length]
+            }
+        }
+    });
+
+    const trails = Object.entries(count)
+        .map(([name, { count, coordinates, numTags }]) => ({ name, count, coordinates: coordinates.toString(), numTags }));
+
+    // The trails that we retrieve may have multiple coordinates for a given name.
+    //  Below we'll iterate through and set the coordinates of each trail by the highest
+    //  quality match (quality just means more tags on OSM).
+    const trailCoords = [];
+    for (const trail of trails) {
+        const coordsArray = trail.coordinates.split(',');
+        let maxNumberOfTags = 0;
+        let bestCoordPair;
+
+        if (coordsArray.length < 4 && coordsArray.length > 0) {
+            bestCoordPair = [parseFloat(coordsArray[0]), parseFloat(coordsArray[1])];
+        }
+
+        let tagIterator = 0;
+        for (let i = 0; i < coordsArray.length; i += 2) {
+            const toCoord = [parseFloat(coordsArray[i]), parseFloat(coordsArray[i + 1])];
+            let numberOfTags = trail.numTags[tagIterator];
+            tagIterator++;
+
+            if (!toCoord[0] || !toCoord[1]) {
+                continue;
+            }
+
+            if (numberOfTags > maxNumberOfTags) {
+                maxNumberOfTags = numberOfTags;
+                bestCoordPair = toCoord;
+            }
+        }
+
+        trailCoords.push({ name: trail.name, coordinates: bestCoordPair, quality: trail.numTags.reduce((a, b) => a + b) });
+    }
+
+    trailCoords.sort((a, b) => b.quality - a.quality);
+
+    // Calculate the average quality.
+    let total = 0;
+    for (let i = 0; i < trailCoords.length; i++) {
+        total += trailCoords[i].quality;
+    }
+
+    let avg = total / trailCoords.length;
+
+    // Filter the trails with a quality higher than the average quality.
+    //  We'll take only the trails that stand out from the rest.
+    let filteredTrails = trailCoords.filter(obj => obj.quality > avg);
+
+    // We can include up to 12 waypoints in the Optimization request.
+    let numOfPOIs = 0;
+    if (userWaypointsLength < MAX_WAYPOINTS_COUNT) {
+        numOfPOIs = MAX_WAYPOINTS_COUNT - userWaypointsLength;
+    }
+
+    return filteredTrails.slice(0, numOfPOIs);
 }
 
 async function getInfoAboutRoute(data) {
@@ -211,10 +418,61 @@ async function getInfoAboutRoute(data) {
     return metrics;
 }
 
+function getOverpassQueryForCoordinates(coordinates) {
+    const radius = 1000;
+    const overpassQuery = `
+    [out:json];
+    (
+      ${coordinates.map(coordinate => `
+        way["leisure"="park"](around:${radius},${coordinate[0]},${coordinate[1]});
+        way["leisure"="nature_reserve"](around:${radius},${coordinate[0]},${coordinate[1]});
+        way["landuse"="recreation_ground"](around:${radius},${coordinate[0]},${coordinate[1]});
+      `).join('')}
+    );
+    (
+      way["bicycle"="designated"][name](around:1);
+      way["bicycle"="yes"][name](around:1);
+    );
+    (
+      way["leisure"="park"][name](around:100);
+      way["leisure"="nature_reserve"][name](around:100);
+      way["landuse"="recreation_ground"][name](around:100);
+    );
+    out center;`;
+
+    return overpassQuery;
+}
+
+async function getPointsFromQuery(query) {
+    const url = 'https://overpass.kumi.systems/api/interpreter';
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            body: query
+        });
+
+        const data = await response.json();
+        if (response.status !== 200) {
+            console.log("Querying points failed. OpenStreetMap response status: " + response.status);
+            console.log(data);
+        }
+
+        let points = null;
+        if (data != null) {
+            points = data.elements;
+        }
+
+        return points;
+    } catch (error) {
+        console.error(error);
+    }
+}
+
 // Uses Mapbox Tilequery API to retrieve the surface type (if any) for a given coordinate.
-async function getSurfaceFromCoordinate(coordinates) {
+async function getSurfaceFromCoordinate(coordinate) {
     const accessToken = process.env.MAPBOX_API_KEY;
-    const strCoordinates = `${coordinates[1]},${coordinates[0]}`;
+    const strCoordinates = `${coordinate[1]},${coordinate[0]}`;
     const options = {
         radius: 5,
         limit: 1,
