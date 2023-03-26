@@ -46,7 +46,6 @@ router.post('/create-route', verifyAppToken, checkJwt, function (req, res) {
             .then(data => {
                 getPoiAlongRoute(data.routes[0], parsedData.waypoints.values.length)
                     .then(pointsOfInterest => {
-                        console.log("poi: " + JSON.stringify(pointsOfInterest));
                         getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest)
                             .then(optimizedData => {
                                 // Optimize API returns routes inside a "trips" array.
@@ -150,8 +149,6 @@ async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) 
     if (additionalWaypointsString.length > 0) {
         finalWaypointsString += `;${additionalWaypointsString}`;
     }
-
-    console.log(finalWaypointsString);
 
     const routeOptions = {
         annotations: [
