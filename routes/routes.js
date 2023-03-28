@@ -99,7 +99,6 @@ router.post('/route-metrics', verifyAppToken, function (req, res) {
     }
 });
 
-//todo verify token and jwt
 router.post('/save-route', verifyAppToken, checkJwt, function (req, res) {
     const token = req.headers.authorization.replace('Bearer ', '');
     const decoded = jsonwebtoken.decode(token);
