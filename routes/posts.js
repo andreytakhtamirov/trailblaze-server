@@ -86,6 +86,7 @@ router.post('/create-post', verifyAppToken, checkJwt, function (req, res) {
                 });
         }).catch(err => {
             console.error(err);
+            // Potential improvement: Mention the specific part that was invalid.
             res.status(500).send('Incomplete post');
         });
 });

@@ -110,6 +110,11 @@ router.post('/save-route', verifyAppToken, checkJwt, function (req, res) {
     };
 
     const parsedData = JSON.parse(JSON.stringify(req.body));
+    let imageUrl = null;
+
+    if (parsedData.imageUrl != null) {
+        imageUrl = parsedData.imageUrl;
+    }
 
     // Connect to database.
     mongoose.connect(DB_URI, {
@@ -121,6 +126,7 @@ router.post('/save-route', verifyAppToken, checkJwt, function (req, res) {
             const route = new Route({
                 title: parsedData.title,
                 route: parsedData.route,
+                imageUrl: imageUrl,
                 routeOptions: parsedData.routeOptions
             });
 
@@ -158,6 +164,7 @@ router.post('/save-route', verifyAppToken, checkJwt, function (req, res) {
                 });
         }).catch(err => {
             console.error(err);
+            // Potential improvement: Mention the specific part that was invalid.
             res.status(500).send('Incomplete route data');
         });
 });
@@ -480,7 +487,8 @@ async function getInfoAboutRoute(data) {
 
                 let surface = null;
                 if (lastSetSurfaceValue === "") {
-                    surface = await getSurfaceFromCoordinate(coordinate);
+                    // Commented out fetching surface types for now to reduce API usage limits.
+                    surface = null; //await getSurfaceFromCoordinate(coordinate);
                 }
 
                 if (surface == null) {
