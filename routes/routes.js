@@ -5,6 +5,10 @@ const jwksRsa = require('jwks-rsa');
 const fetch = require("node-fetch");
 const turf = require("@turf/turf");
 const polyline = require('@mapbox/polyline');
+const User = require('../models/user');
+const Route = require('../models/route');
+const jsonwebtoken = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
 // Max number of coordinates which Optimization V1 (route calculation API) will take.
 const MAX_WAYPOINTS_COUNT = 12;
@@ -14,6 +18,8 @@ const MAX_WAYPOINTS_COUNT = 12;
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
+
+const DB_URI = process.env.DB_CONNECTION_STRING;
 
 // Middleware for checking the JWT
 const checkJwt = jwt({
@@ -39,12 +45,12 @@ const verifyAppToken = (req, res, next) => {
     next()
 }
 
-router.post('/create-route', verifyAppToken, checkJwt, function (req, res) {
+router.post('/create-route', verifyAppToken, function (req, res) {
     try {
-        const parsedData = JSON.parse(JSON.stringify(req.body)).nameValuePairs;
+        const parsedData = JSON.parse(JSON.stringify(req.body));
         getMapboxRoute(parsedData)
             .then(data => {
-                getPoiAlongRoute(data.routes[0], parsedData.waypoints.values.length)
+                getPoiAlongRoute(data.routes[0], parsedData.waypoints.length)
                     .then(pointsOfInterest => {
                         getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest)
                             .then(optimizedData => {
@@ -52,6 +58,12 @@ router.post('/create-route', verifyAppToken, checkJwt, function (req, res) {
                                 // Rename this field to "routes" so our client can process it.
                                 optimizedData.routes = optimizedData.trips;
                                 delete optimizedData.trips;
+
+                                optimizedData.routeOptions = {
+                                    "profile": parsedData.profile,
+                                    "waypoints": parsedData.waypoints
+                                }
+
                                 res.status(200).send(optimizedData);
                             })
                             .catch(error => {
@@ -87,14 +99,121 @@ router.post('/route-metrics', verifyAppToken, function (req, res) {
     }
 });
 
+router.post('/save-route', verifyAppToken, checkJwt, function (req, res) {
+    const token = req.headers.authorization.replace('Bearer ', '');
+    const decoded = jsonwebtoken.decode(token);
+
+    const user = {
+        email: decoded.email,
+        username: decoded.name,
+        user_sub: decoded.sub,
+    };
+
+    const parsedData = JSON.parse(JSON.stringify(req.body));
+    let imageUrl = null;
+
+    if (parsedData.imageUrl != null) {
+        imageUrl = parsedData.imageUrl;
+    }
+
+    // Connect to database.
+    mongoose.connect(DB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+    })
+        .then(() => {
+            // Save route from request body data.
+            const route = new Route({
+                title: parsedData.title,
+                route: parsedData.route,
+                imageUrl: imageUrl,
+                routeOptions: parsedData.routeOptions
+            });
+
+            return route.save();
+        })
+        .then(savedRoute => {
+            // Once we have a saved route, find or create a user.
+            // user_sub is the more unique field, since users can sign in with the same
+            //  email address from multiple sources (google as well as auth0 database).
+            User.findOne({ user_sub: user.user_sub })
+                .then(existingUser => {
+                    if (existingUser) {
+                        // We have an existing user. Update to include new route ID.
+                        existingUser.routes.push(savedRoute);
+                        return existingUser.save();
+                    } else {
+                        // Create a new user including the new route ID.
+                        const newUser = new User({
+                            email: user.email,
+                            username: user.username,
+                            user_sub: user.user_sub,
+                            routes: savedRoute._id,
+                            likes: [],
+                        });
+
+                        return newUser.save();
+                    }
+                })
+                .then(savedUser => {
+                    res.status(200).json(savedRoute);
+                })
+                .catch(err => {
+                    console.error(err);
+                    res.status(500).send('Internal server error');
+                });
+        }).catch(err => {
+            console.error(err);
+            // Potential improvement: Mention the specific part that was invalid.
+            res.status(500).send('Incomplete route data');
+        });
+});
+
+router.get('/get-routes', verifyAppToken, checkJwt, async (req, res) => {
+    mongoose.connect(DB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+    })
+        .then(() => {
+            try {
+                const token = req.headers.authorization.replace('Bearer ', '');
+                const decoded = jsonwebtoken.decode(token);
+
+                User.findOne({ user_sub: decoded.sub }).populate('routes')
+                    .then((user) => {
+                        if (!user) {
+                            return res.status(404).send('User not found');
+                        }
+
+                        const page = parseInt(req.query.page) || 1;
+                        const limit = 5;
+                        const startIndex = (page - 1) * limit;
+                        const endIndex = page * limit;
+
+                        const routeIds = user.routes.slice(startIndex, endIndex).map(route => route._id);
+                        Route.find({ _id: { $in: routeIds } })
+                            .then((routes) => {
+                                res.json(routes);
+                            });
+                    });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send('Server error');
+            }
+        });
+});
+
 async function getMapboxRoute(parsedData) {
     const accessToken = process.env.MAPBOX_API_KEY;
     const profile = parsedData.profile;
 
-    const waypoints = parsedData.waypoints.values.map((wp) => {
-        const { coordinates } = JSON.parse(wp);
-        return `${coordinates[0]},${coordinates[1]}`;
-    }).join(';');
+    const centerList = [];
+    for (const feature of parsedData.waypoints) {
+        const center = JSON.parse(feature).center;
+        centerList.push(center.join(','));
+    }
+
+    const waypoints = centerList.join(';');
 
     const routeOptions = {
         annotations: [
@@ -112,7 +231,7 @@ async function getMapboxRoute(parsedData) {
 
     try {
         const response = await fetch(`https://api.mapbox.com/directions/v5/mapbox/${profile}/${waypoints}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
-        console.log("Mapbox response status: " + response.status);
+        console.log("Mapbox response status (Directions API): " + response.status);
         const data = await response.json();
         if (response.status !== 200) {
             console.log(data);
@@ -134,10 +253,12 @@ async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) 
     // TODO since "destination" is set to "last", the last user provided coordinate
     //  should be the last coordinate in the total waypoints string.
 
-    const waypoints = parsedData.waypoints.values.map((wp) => {
-        const { coordinates } = JSON.parse(wp);
-        return `${coordinates[0]},${coordinates[1]}`;
-    }).join(';');
+    const centerList = [];
+    for (const feature of parsedData.waypoints) {
+        const center = JSON.parse(feature).center;
+        centerList.push(center.join(','));
+    }
+    const waypoints = centerList.join(';');
 
     const additionalWaypointsString = pointsOfInterest.map((wp) => {
         return `${wp.coordinates[0]},${wp.coordinates[1]}`;
@@ -165,7 +286,7 @@ async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) 
 
     try {
         const response = await fetch(`https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${finalWaypointsString}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
-        console.log("Mapbox response status: " + response.status);
+        console.log("Mapbox response status (Optimization API): " + response.status);
         const data = await response.json();
         if (response.status !== 200) {
             console.log(data);
@@ -366,7 +487,8 @@ async function getInfoAboutRoute(data) {
 
                 let surface = null;
                 if (lastSetSurfaceValue === "") {
-                    surface = await getSurfaceFromCoordinate(coordinate);
+                    // Commented out fetching surface types for now to reduce API usage limits.
+                    surface = null; //await getSurfaceFromCoordinate(coordinate);
                 }
 
                 if (surface == null) {
