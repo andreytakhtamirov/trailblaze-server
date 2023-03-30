@@ -9,6 +9,7 @@ const User = require('../models/user');
 const Route = require('../models/route');
 const jsonwebtoken = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const testData = require('./testData');
 
 // Max number of coordinates which Optimization V1 (route calculation API) will take.
 const MAX_WAYPOINTS_COUNT = 12;
@@ -44,6 +45,17 @@ const verifyAppToken = (req, res, next) => {
     }
     next()
 }
+
+// This route will return a pre-made route reseponse.
+// It doesn't require any auth headers.
+router.post('/create-test-route', function (req, res) {
+    try {
+        const parsedData = JSON.parse(JSON.stringify(testData));
+        res.status(200).send(parsedData);
+    } catch (e) {
+        console.log("Error creating route: " + e);
+    }
+});
 
 router.post('/create-route', verifyAppToken, function (req, res) {
     try {
