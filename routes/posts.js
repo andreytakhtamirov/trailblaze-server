@@ -125,7 +125,7 @@ router.get('/get-user-posts', verifyAppToken, checkJwt, async (req, res) => {
         });
 });
 
-router.get('/get-posts', verifyAppToken, checkJwt, async (req, res) => {
+router.get('/get-posts', verifyAppToken, async (req, res) => {
     mongoose.connect(DB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
@@ -140,6 +140,7 @@ router.get('/get-posts', verifyAppToken, checkJwt, async (req, res) => {
                 Post.find()
                     .skip(startIndex)
                     .limit(limit)
+                    .populate('routeId')
                     .then((posts) => {
                         res.json(posts);
                     });
