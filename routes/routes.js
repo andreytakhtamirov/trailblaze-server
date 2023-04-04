@@ -188,10 +188,11 @@ router.get('/get-routes', verifyAppToken, checkJwt, async (req, res) => {
                         const page = parseInt(req.query.page) || 1;
                         const limit = 5;
                         const startIndex = (page - 1) * limit;
-                        const endIndex = page * limit;
 
-                        const routeIds = user.routes.slice(startIndex, endIndex).map(route => route._id);
-                        Route.find({ _id: { $in: routeIds } })
+                        Route.find({ _id: { $in: user.routes } })
+                            .sort({ _id: -1 })
+                            .skip(startIndex)
+                            .limit(limit)
                             .then((routes) => {
                                 res.json(routes);
                             });

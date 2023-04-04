@@ -110,11 +110,12 @@ router.get('/get-user-posts', verifyAppToken, checkJwt, async (req, res) => {
                         const page = parseInt(req.query.page) || 1;
                         const limit = 5;
                         const startIndex = (page - 1) * limit;
-                        const endIndex = page * limit;
 
-                        const postIds = user.posts.slice(startIndex, endIndex).map(post => post._id);
-                        Post.find({ _id: { $in: postIds } })
+                        Post.find({ _id: { $in: user.posts } })
+                            .sort({ _id: -1 })
                             .populate('routeId')
+                            .skip(startIndex)
+                            .limit(limit)
                             .then((posts) => {
                                 res.json(posts);
                             });
@@ -145,11 +146,12 @@ router.get('/get-user-likes', verifyAppToken, checkJwt, async (req, res) => {
                         const page = parseInt(req.query.page) || 1;
                         const limit = 5;
                         const startIndex = (page - 1) * limit;
-                        const endIndex = page * limit;
 
-                        const postIds = user.likes.slice(startIndex, endIndex).map(post => post._id);
-                        Post.find({ _id: { $in: postIds } })
+                        Post.find({ _id: { $in: user.likes } })
+                            .sort({ _id: -1 })
                             .populate('routeId')
+                            .skip(startIndex)
+                            .limit(limit)
                             .then((posts) => {
                                 res.json(posts);
                             });
@@ -174,6 +176,7 @@ router.get('/get-posts', verifyAppToken, async (req, res) => {
                 const startIndex = (page - 1) * limit;
 
                 Post.find()
+                    .sort({ _id: -1 })
                     .skip(startIndex)
                     .limit(limit)
                     .populate('routeId')
