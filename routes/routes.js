@@ -188,13 +188,40 @@ router.get('/get-routes', verifyAppToken, checkJwt, async (req, res) => {
                         const page = parseInt(req.query.page) || 1;
                         const limit = 5;
                         const startIndex = (page - 1) * limit;
-                        const endIndex = page * limit;
 
-                        const routeIds = user.routes.slice(startIndex, endIndex).map(route => route._id);
-                        Route.find({ _id: { $in: routeIds } })
+                        Route.find({ _id: { $in: user.routes } })
+                            .sort({ _id: -1 })
+                            .skip(startIndex)
+                            .limit(limit)
                             .then((routes) => {
                                 res.json(routes);
                             });
+                    });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send('Server error');
+            }
+        });
+});
+
+router.get('/get-routes-count', verifyAppToken, checkJwt, async (req, res) => {
+    mongoose.connect(DB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+    })
+        .then(() => {
+            try {
+                const token = req.headers.authorization.replace('Bearer ', '');
+                const decoded = jsonwebtoken.decode(token);
+
+                User.findOne({ user_sub: decoded.sub })
+                    .then((user) => {
+                        if (!user) {
+                            return res.status(404).send('User not found');
+                        }
+
+                        const routesCount = user.routes.length;
+                        res.json({ count: routesCount });
                     });
             } catch (error) {
                 console.error(error);
