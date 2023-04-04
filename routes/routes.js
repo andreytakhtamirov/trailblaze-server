@@ -203,6 +203,32 @@ router.get('/get-routes', verifyAppToken, checkJwt, async (req, res) => {
         });
 });
 
+router.get('/get-routes-count', verifyAppToken, checkJwt, async (req, res) => {
+    mongoose.connect(DB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+    })
+        .then(() => {
+            try {
+                const token = req.headers.authorization.replace('Bearer ', '');
+                const decoded = jsonwebtoken.decode(token);
+
+                User.findOne({ user_sub: decoded.sub })
+                    .then((user) => {
+                        if (!user) {
+                            return res.status(404).send('User not found');
+                        }
+
+                        const routesCount = user.routes.length;
+                        res.json({ count: routesCount });
+                    });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send('Server error');
+            }
+        });
+});
+
 async function getMapboxRoute(parsedData) {
     const accessToken = process.env.MAPBOX_API_KEY;
     const profile = parsedData.profile;
