@@ -277,25 +277,29 @@ async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) 
     const profile = parsedData.profile;
     const roundTrip = false; // This could be set by the client.
 
-    // TODO since "destination" is set to "last", the last user provided coordinate
-    //  should be the last coordinate in the total waypoints string.
-
     const centerList = [];
     for (const feature of parsedData.waypoints) {
         const center = JSON.parse(feature).center;
         centerList.push(center.join(','));
     }
-    const waypoints = centerList.join(';');
 
+    let finalWaypointsString;
     const additionalWaypointsString = pointsOfInterest.map((wp) => {
         return `${wp.coordinates[0]},${wp.coordinates[1]}`;
     }).join(';');
-
-    let finalWaypointsString = `${waypoints}`;
-
-    // If there are additional waypoints, append them to the total waypoints.
-    if (additionalWaypointsString.length > 0) {
-        finalWaypointsString += `;${additionalWaypointsString}`;
+    if (centerList.length === 2) {
+        // If there are only 2 waypoints (origin and destination), treat he second 
+        //  point as the true destination (destination: 'last') in our route options.
+        if (additionalWaypointsString) {
+            finalWaypointsString = `${centerList[0]};${additionalWaypointsString};${centerList[1]}`;
+        } else {
+            finalWaypointsString = `${centerList[0]};${centerList[1]}`;
+        }
+    } else {
+        finalWaypointsString = centerList.join(';');
+        if (additionalWaypointsString) {
+            finalWaypointsString += `;${additionalWaypointsString}`;
+        }
     }
 
     const routeOptions = {
@@ -515,7 +519,7 @@ async function getInfoAboutRoute(data) {
                 let surface = null;
                 if (lastSetSurfaceValue === "") {
                     // Commented out fetching surface types for now to reduce API usage limits.
-                    surface = null; //await getSurfaceFromCoordinate(coordinate);
+                    surface = await getSurfaceFromCoordinate(coordinate);
                 }
 
                 if (surface == null) {
@@ -590,7 +594,7 @@ function getOverpassQueryForCoordinates(coordinates) {
 }
 
 async function getPointsFromQuery(query) {
-    const url = 'https://overpass.kumi.systems/api/interpreter';
+    const url = 'https://overpass-api.de/api/interpreter';
 
     try {
         const response = await fetch(url, {
