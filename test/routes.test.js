@@ -3,6 +3,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+process.env.NODE_ENV = "test"
+
 const chai = require('chai');
 const chaiHttp = require('chai-http');
 const { app, startServer } = require('../test_server');
