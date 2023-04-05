@@ -11,7 +11,7 @@ const test_server = http.createServer(app);
 function startServer() {
   test_server.listen(port, () => {
     console.log(`Test server running at http://localhost:${port}`);
-    if (app.get('env') === 'test') {
+    if (process.env.NODE_ENV.toString().trim() === "test") {
       app.emit('ready');
     }
   });

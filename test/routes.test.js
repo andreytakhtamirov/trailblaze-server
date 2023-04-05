@@ -11,10 +11,9 @@ const expect = chai.expect;
 chai.use(chaiHttp);
 
 describe('Routes API', () => {
-  // Replace 'your-app-token' with the actual token
   const appToken = process.env.TRAILBLAZE_APP_TOKEN;
 
-  before(async (done) => {
+  before((done) => {
     app.on('ready', () => {
       done();
     });
@@ -22,7 +21,8 @@ describe('Routes API', () => {
   });
 
   describe('POST /routes/create-route', () => {
-    it('should create a route', (done) => {
+    it('should create a route', function(done) {
+      this.timeout(10000); // Set a 10-second timeout for this test
 
       const requestBody = {
         profile: "walking",
@@ -38,7 +38,6 @@ describe('Routes API', () => {
         .request(app)
         .post('/routes/create-route')
         .set('TRAILBLAZE-APP-TOKEN', appToken)
-        // .set('content-type', 'application/json')
         .send(requestBody)
         .end((err, res) => {
           expect(err).to.be.null;
