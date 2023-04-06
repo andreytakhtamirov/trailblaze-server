@@ -594,7 +594,47 @@ function getOverpassQueryForCoordinates(coordinates) {
 }
 
 async function getPointsFromQuery(query) {
-    const url = 'https://overpass-api.de/api/interpreter';
+    const url = process.env.OVERPASS_MAIN_INSTANCE;
+
+    try {
+        let response = await fetch(url, {
+            method: 'POST',
+            body: query
+        });
+
+        let data = null;
+
+        try {
+            data = await response.json();
+        }
+        catch(e) {
+            console.log("Failed to parse overpass response: " + response.status);
+        }
+
+        if (response.status !== 200) {
+            console.log("Querying points failed. OpenStreetMap response status: " + response.status);
+            console.log(data);
+        }
+
+        if (response.status >= 500 && response.status < 600) {
+            // If this request failed, attempt a second one using a different instance.
+            console.log("Server error. Let's try the fallback instance.");
+            response = await getOverpassQueryFallback(query);
+            data = await response.json();
+        }
+
+        if (data != null) {
+            points = data.elements;
+        }
+
+        return points;
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function getOverpassQueryFallback(query) {
+    const url = process.env.OVERPASS_FALLBACK_INSTANCE;
 
     try {
         const response = await fetch(url, {
@@ -602,18 +642,7 @@ async function getPointsFromQuery(query) {
             body: query
         });
 
-        const data = await response.json();
-        if (response.status !== 200) {
-            console.log("Querying points failed. OpenStreetMap response status: " + response.status);
-            console.log(data);
-        }
-
-        let points = null;
-        if (data != null) {
-            points = data.elements;
-        }
-
-        return points;
+        return response;
     } catch (error) {
         console.error(error);
     }
