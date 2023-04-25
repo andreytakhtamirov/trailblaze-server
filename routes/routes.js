@@ -13,6 +13,12 @@ const mongoose = require('mongoose');
 // Max number of coordinates which Optimization V1 (route calculation API) will take.
 const MAX_WAYPOINTS_COUNT = 12;
 
+// Collected all paved surface types from https://wiki.openstreetmap.org/wiki/Key:surface
+const SURFACES_PAVED = ["asphalt", "paved", "concrete", "compacted", "paving_stones", "chipseal", "concrete:plates", "concrete:lanes", "sett", "unhewn_cobblestone", "cobblestone", "metal", "wood", "rubber"];
+const SURFACE_PAVED_LABEL = "paved";
+const SURFACE_UNPAVED_LABEL = "unpaved";
+const SURFACE_UNKNOWN_LABEL = "unknown";
+
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
 if (process.env.NODE_ENV !== 'production') {
@@ -80,6 +86,32 @@ router.post('/create-route', verifyAppToken, function (req, res) {
             });
     } catch (e) {
         console.log("Error creating route: " + e);
+    }
+});
+
+router.post('/update-route', verifyAppToken, function (req, res) {
+    try {
+        const parsedData = JSON.parse(JSON.stringify(req.body));
+        getMapboxOptimizationForWaypoints(parsedData)
+            .then(optimizedData => {
+                // Optimize API returns routes inside a "trips" array.
+                // Rename this field to "routes" so our client can process it.
+                optimizedData.routes = optimizedData.trips;
+                delete optimizedData.trips;
+
+                optimizedData.routeOptions = {
+                    "profile": parsedData.profile,
+                    "waypoints": parsedData.waypoints
+                }
+
+                res.status(200).send(optimizedData);
+            })
+            .catch(error => {
+                console.error(error);
+                res.status(500).send('Error fetching route from Mapbox');
+            });
+    } catch (e) {
+        console.log("Error updating route: " + e);
     }
 });
 
@@ -328,6 +360,49 @@ async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) 
     }
 }
 
+async function getMapboxOptimizationForWaypoints(parsedData) {
+    // This method should be used to calculate a route with known points.
+    //  (when we already know the points of interest). It will return the 
+    //  shortest path between all of them.
+    const accessToken = process.env.MAPBOX_API_KEY;
+    const profile = parsedData.profile;
+    const roundTrip = false; // This could be set by the client.
+
+    const waypoints = parsedData.waypoints.map((waypoint) => {
+        const parsedWaypoint = JSON.parse(waypoint);
+        const [longitude, latitude] = parsedWaypoint.coordinates;
+        return `${longitude},${latitude}`;
+    });
+
+    const finalWaypointsString = waypoints.join(';');
+
+    const routeOptions = {
+        annotations: [
+            'distance',
+            'duration'
+        ],
+        steps: true,
+        overview: 'full',
+        geometries: 'polyline6',
+        source: 'first',
+        destination: 'last',
+        roundtrip: roundTrip
+    };
+
+
+    try {
+        const response = await fetch(`https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${finalWaypointsString}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
+        console.log("Mapbox response status (Optimization API): " + response.status);
+        const data = await response.json();
+        if (response.status !== 200) {
+            console.log(data);
+        }
+        return data;
+    } catch (error) {
+        return console.error(error);
+    }
+}
+
 async function getPoiAlongRoute(route, userWaypointsLength) {
     if (route.legs == null || route.legs.length == 0) {
         console.log("Can't get route info: route doesn't have any legs");
@@ -374,8 +449,8 @@ async function getPoiAlongRoute(route, userWaypointsLength) {
         };
     }
 
-    let query = getOverpassQueryForCoordinates(coordinatesEveryInterval);
-    let points = await getPointsFromQuery(query);
+    let query = getOverpassQueryForCoordinates(pointDistanceThreshold, coordinatesEveryInterval);
+    let points = await getOsmResults(query);
     if (points == null) {
         console.log("Error. No points returned from OSM.");
         return;
@@ -475,7 +550,8 @@ async function getInfoAboutRoute(data) {
     let distancesEveryInterval = [];
     let lastCoordinate = [];
 
-    const surfaceAggregates = {};
+    // Query for getting a geometry of the route with OSM.
+    let query = "[out:json];(";
 
     for (const leg of data.legs) {
         const steps = leg.steps;
@@ -489,6 +565,8 @@ async function getInfoAboutRoute(data) {
             //  distance) to fetch elevation later.
             for (let i = 0; i < coordinates.length; i++) {
                 const coordinate = coordinates[i];
+
+                query += `way["highway"](around:2, ${coordinate[0]}, ${coordinate[1]});`;
 
                 if (lastCoordinate.length == 0) {
                     lastCoordinate = coordinate;
@@ -507,43 +585,48 @@ async function getInfoAboutRoute(data) {
                     }
                 }
             }
+        }
+    }
 
-            // Calculate surface types along route. It's too costly to look
-            //  up every single step so we can skip more in between if the 
-            //  route is longer.
+    query += ");out geom;";
+
+    // Get a geometry of the route from OSM. 
+    //  This includes road data such as names and surface types.
+    const osmGeometry = await getOsmResults(query);
+    const surfaceAggregates = {};
+
+    // Match each coordinate with a surface type using OSM data.
+    for (const leg of data.legs) {
+        for (const step of leg.steps) {
+            const geometry = step.geometry;
+            const coordinates = polyline.decode(geometry, 6);
+
             let inferredSurfaceValue = "";
-            let lastSetSurfaceValue = "";
-            for (let i = 0; i < coordinates.length; i += coordinateLookupInterval) {
+            for (let i = 0; i < coordinates.length; i++) {
                 const coordinate = coordinates[i];
 
-                let surface = null;
-                if (lastSetSurfaceValue === "") {
-                    // Commented out fetching surface types for now to reduce API usage limits.
-                    surface = await getSurfaceFromCoordinate(coordinate);
-                }
+                let surface = findNearestSurfaceType(osmGeometry, coordinate);
 
                 if (surface == null) {
-                    if (lastSetSurfaceValue == "") {
-                        surface = 'undefined';
-                        inferredSurfaceValue = surface;
-                        i += 1;
-                    } else {
-                        surface = lastSetSurfaceValue;
-                    }
-                } else {
+                    surface = SURFACE_UNKNOWN_LABEL;
                     inferredSurfaceValue = surface;
+                } else {
+                    if (SURFACES_PAVED.includes(surface)) {
+                        inferredSurfaceValue = SURFACE_PAVED_LABEL;
+                    } else {
+                        inferredSurfaceValue = SURFACE_UNPAVED_LABEL;
+                    }
                     break;
                 }
             }
 
-            const mostCommonSurface = inferredSurfaceValue;
             const distance = step.distance;
-
-            if (!surfaceAggregates[mostCommonSurface]) {
-                surfaceAggregates[mostCommonSurface] = 0;
+            if (!surfaceAggregates[inferredSurfaceValue]) {
+                surfaceAggregates[inferredSurfaceValue] = 0;
             }
-            surfaceAggregates[mostCommonSurface] += distance;
-        };
+
+            surfaceAggregates[inferredSurfaceValue] += distance;
+        }
     }
 
     // Build the surface metrics JSON object.
@@ -565,18 +648,39 @@ async function getInfoAboutRoute(data) {
         "elevationMetrics": elevationMetrics
     };
 
+    console.log(JSON.stringify(surfaceMetrics));
+
     return metrics;
 }
 
-function getOverpassQueryForCoordinates(coordinates) {
-    const radius = 1000;
+function findNearestSurfaceType(osmGeometry, coord) {
+    let nearestDist = Infinity;
+    let nearestSurfaceType = null;
+
+    for (let way of osmGeometry) {
+        // Get the minimum distance from a point to a lineString (road).
+        // We can assume that the point lies on that road and infer the 
+        //  surface type from it.
+        const coords = way.geometry.map(node => [node.lat, node.lon]);
+        const dist = turf.pointToLineDistance(turf.point(coord), turf.lineString(coords));
+
+        if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestSurfaceType = way.tags?.surface ?? null;
+        }
+    }
+
+    return nearestSurfaceType;
+}
+
+function getOverpassQueryForCoordinates(scanRadius, coordinates) {
     const overpassQuery = `
     [out:json];
     (
       ${coordinates.map(coordinate => `
-        way["leisure"="park"](around:${radius},${coordinate[0]},${coordinate[1]});
-        way["leisure"="nature_reserve"](around:${radius},${coordinate[0]},${coordinate[1]});
-        way["landuse"="recreation_ground"](around:${radius},${coordinate[0]},${coordinate[1]});
+        way["leisure"="park"](around:${scanRadius},${coordinate[0]},${coordinate[1]});
+        way["leisure"="nature_reserve"](around:${scanRadius},${coordinate[0]},${coordinate[1]});
+        way["landuse"="recreation_ground"](around:${scanRadius},${coordinate[0]},${coordinate[1]});
       `).join('')}
     );
     (
@@ -593,7 +697,7 @@ function getOverpassQueryForCoordinates(coordinates) {
     return overpassQuery;
 }
 
-async function getPointsFromQuery(query) {
+async function getOsmResults(query) {
     const url = process.env.OVERPASS_MAIN_INSTANCE;
 
     try {
@@ -607,7 +711,7 @@ async function getPointsFromQuery(query) {
         try {
             data = await response.json();
         }
-        catch(e) {
+        catch (e) {
             console.log("Failed to parse overpass response: " + response.status);
         }
 
@@ -623,11 +727,12 @@ async function getPointsFromQuery(query) {
             data = await response.json();
         }
 
+        let elements = null;
         if (data != null) {
-            points = data.elements;
+            elements = data.elements;
         }
 
-        return points;
+        return elements;
     } catch (error) {
         console.error(error);
     }
@@ -645,35 +750,6 @@ async function getOverpassQueryFallback(query) {
         return response;
     } catch (error) {
         console.error(error);
-    }
-}
-
-// Uses Mapbox Tilequery API to retrieve the surface type (if any) for a given coordinate.
-async function getSurfaceFromCoordinate(coordinate) {
-    const accessToken = process.env.MAPBOX_API_KEY;
-    const strCoordinates = `${coordinate[1]},${coordinate[0]}`;
-    const options = {
-        radius: 5,
-        limit: 1,
-        geometry: 'linestring',
-    };
-
-    try {
-        const response = await fetch(`https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${strCoordinates}.json?access_token=${accessToken}&${new URLSearchParams(options)}`);
-        const data = await response.json();
-        if (response.status !== 200) {
-            console.log("Querying surface failed. Mapbox response status: " + response.status);
-            console.log(data);
-        }
-
-        let surface = null;
-        if (data != null && data.features != null && data.features.length > 0) {
-            surface = data.features[0].properties.surface;
-        }
-
-        return surface;
-    } catch (error) {
-        return console.error(error);
     }
 }
 
