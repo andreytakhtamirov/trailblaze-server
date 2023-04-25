@@ -648,8 +648,6 @@ async function getInfoAboutRoute(data) {
         "elevationMetrics": elevationMetrics
     };
 
-    console.log(JSON.stringify(surfaceMetrics));
-
     return metrics;
 }
 
