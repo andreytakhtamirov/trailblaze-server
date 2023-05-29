@@ -89,6 +89,27 @@ router.post('/create-route', verifyAppToken, function (req, res) {
     }
 });
 
+router.post('/create-route-pathsense', verifyAppToken, function (req, res) {
+    try {
+        const parsedData = JSON.parse(JSON.stringify(req.body));
+        getPathsenseRoute(parsedData)
+            .then(data => {
+                data.routeOptions = {
+                    "profile": parsedData.profile,
+                    "waypoints": parsedData.waypoints
+                }
+
+                res.status(200).send(data);
+            })
+            .catch(error => {
+                console.error(error);
+                res.status(500).send('Error fetching route.');
+            });
+    } catch (e) {
+        console.log("Error creating route: " + e);
+    }
+});
+
 router.post('/update-route', verifyAppToken, function (req, res) {
     try {
         const parsedData = JSON.parse(JSON.stringify(req.body));
@@ -291,6 +312,43 @@ async function getMapboxRoute(parsedData) {
     try {
         const response = await fetch(`https://api.mapbox.com/directions/v5/mapbox/${profile}/${waypoints}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
         console.log("Mapbox response status (Directions API): " + response.status);
+        const data = await response.json();
+        if (response.status !== 200) {
+            console.log(data);
+        }
+        return data;
+    } catch (error) {
+        return console.error(error);
+    }
+}
+
+async function getPathsenseRoute(parsedData) {
+    // For now pathsense only supports 1 profile
+    const profile = parsedData.profile;
+
+    const centerList = [];
+    for (const feature of parsedData.waypoints) {
+        const center = JSON.parse(feature).center;
+        const longitude = center[0];
+        const latitude = center[1];
+        centerList.push({ longitude, latitude });
+    }
+
+    const request_body = {
+        origin: centerList.at(0),
+        destination: centerList.at(1)
+    };
+
+    try {
+        const response = await fetch("https://trailblaze-pathsense.azurewebsites.net/api/FindRoute", {
+            method: "POST",
+            body: JSON.stringify(request_body),
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+
+        console.log("Trailblaze response status (Pathsense API): " + response.status);
         const data = await response.json();
         if (response.status !== 200) {
             console.log(data);
