@@ -94,12 +94,17 @@ router.post('/create-route-pathsense', verifyAppToken, function (req, res) {
         const parsedData = JSON.parse(JSON.stringify(req.body));
         getPathsenseRoute(parsedData)
             .then(data => {
-                data.routeOptions = {
-                    "profile": parsedData.profile,
-                    "waypoints": parsedData.waypoints
-                }
+                if (typeof data != 'int') {
+                    data.routeOptions = {
+                        "profile": parsedData.profile,
+                        "waypoints": parsedData.waypoints
+                    }
 
-                res.status(200).send(data);
+                    res.status(200).send(data);
+                } else {
+                    // Pass status code from Pathsense as response.
+                    res.status(data);
+                }
             })
             .catch(error => {
                 console.error(error);
@@ -349,9 +354,12 @@ async function getPathsenseRoute(parsedData) {
         });
 
         console.log("Trailblaze response status (Pathsense API): " + response.status);
-        const data = await response.json();
-        if (response.status !== 200) {
+        let data = null;
+        if (response.status == 200) {
+            data = await response.json();
+        } else if (response.status !== 200) {
             console.log(data);
+            data = await response.status
         }
         return data;
     } catch (error) {
