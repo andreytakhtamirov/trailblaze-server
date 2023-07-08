@@ -1,7 +1,6 @@
 var express = require('express');
 var router = express.Router();
-const { expressjwt: jwt } = require("express-jwt");
-const jwksRsa = require('jwks-rsa');
+const JwtAuth = require('../middleware/jwt');
 const Post = require('../models/post');
 const User = require('../models/user');
 const jsonwebtoken = require('jsonwebtoken');
@@ -15,31 +14,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 const DB_URI = process.env.DB_CONNECTION_STRING;
 
-// Middleware for checking the JWT
-const checkJwt = jwt({
-    // Dynamically provide a signing key based on the header 
-    //  and the signing keys provided by the JWKS endpoint.
-    secret: jwksRsa.expressJwtSecret({
-        cache: true,
-        rateLimit: true,
-        jwksRequestsPerMinute: 5,
-        jwksUri: `https://dev-trailblaze.us.auth0.com/.well-known/jwks.json`
-    }),
-
-    issuer: 'https://dev-trailblaze.us.auth0.com/',
-    algorithms: ['RS256']
-});
-
-// Middleware for checking for the app token. Should be checked in all endpoints.
-const verifyAppToken = (req, res, next) => {
-    const token = req.get('TRAILBLAZE-APP-TOKEN')
-    if (!token || token !== process.env.TRAILBLAZE_APP_TOKEN) {
-        return res.status(401).json({ message: 'Unauthorized' })
-    }
-    next()
-}
-
-router.post('/create-post', verifyAppToken, checkJwt, function (req, res) {
+router.post('/create-post', JwtAuth, function (req, res) {
     const token = req.headers.authorization.replace('Bearer ', '');
     const decoded = jsonwebtoken.decode(token);
 
@@ -91,7 +66,7 @@ router.post('/create-post', verifyAppToken, checkJwt, function (req, res) {
         });
 });
 
-router.get('/get-user-posts', verifyAppToken, checkJwt, async (req, res) => {
+router.get('/get-user-posts', JwtAuth, async (req, res) => {
     mongoose.connect(DB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
@@ -127,7 +102,7 @@ router.get('/get-user-posts', verifyAppToken, checkJwt, async (req, res) => {
         });
 });
 
-router.get('/get-user-likes', verifyAppToken, checkJwt, async (req, res) => {
+router.get('/get-user-likes', JwtAuth, async (req, res) => {
     mongoose.connect(DB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
@@ -163,7 +138,7 @@ router.get('/get-user-likes', verifyAppToken, checkJwt, async (req, res) => {
         });
 });
 
-router.get('/get-posts', verifyAppToken, async (req, res) => {
+router.get('/get-posts', async (req, res) => {
     mongoose.connect(DB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,

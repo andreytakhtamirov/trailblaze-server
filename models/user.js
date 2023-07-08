@@ -4,6 +4,7 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true },
     username: { type: String, required: true },
     user_sub: { type: String, required: true },
+    profile_picture: { type: String, required: false},
     routes: { type: [mongoose.Schema.Types.ObjectId], default: [] },
     likes: { type: [mongoose.Schema.Types.ObjectId], default: [] },
     posts: { type: [mongoose.Schema.Types.ObjectId], default: [] },

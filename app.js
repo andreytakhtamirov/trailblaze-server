@@ -5,9 +5,11 @@ var createError = require('http-errors');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+var AuthAppToken = require('./middleware/appToken');
 
 var routesRouter = require('./routes/routes');
 var postsRouter = require('./routes/posts');
+var usersRouter = require('./routes/users');
 
 var app = express();
 
@@ -22,6 +24,9 @@ app.use(logger('dev'));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Require app token to be present for all requests.
+app.use(AuthAppToken);
+
 // Enable the use of request body parsing middleware
 app.use(bodyParser.json({
   // This is needed to be able to accept 
@@ -34,6 +39,7 @@ app.use(bodyParser.urlencoded({
 
 app.use('/routes', routesRouter);
 app.use('/posts', postsRouter);
+app.use('/users', usersRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
