@@ -29,8 +29,21 @@ const DB_URI = process.env.DB_CONNECTION_STRING;
 router.post('/create-route', function (req, res) {
     try {
         const parsedData = JSON.parse(JSON.stringify(req.body));
+
+        let improveRoute = false;
+        if (JSON.stringify(parsedData.profile).includes("_plus")) {
+            // Check if the user wants an improved route (including nearby parks).
+            parsedData.profile = parsedData.profile.substring(0, parsedData.profile.length - "_plus".length);
+            improveRoute = true;
+        }
         getMapboxRoute(parsedData)
             .then(data => {
+                if (!improveRoute) {
+                    // If user doesn't want improved route, we can simply send the mapbox-generated route.
+                    res.status(200).send(data);
+                    return;
+                }
+
                 getPoiAlongRoute(data.routes[0], parsedData.waypoints.length)
                     .then(pointsOfInterest => {
                         getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest)
