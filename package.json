@@ -7,8 +7,8 @@
     "test-routes": "set NODE_ENV=test && mocha test/routes.test.js"
   },
   "engines": {
-    "node": ">= 16.15.1",
-    "npm": ">= 8.4.0"
+    "node": ">= 20.0.0",
+    "npm": ">= 9.0.0"
   },
   "dependencies": {
     "@mapbox/polyline": "^1.1.1",
@@ -27,7 +27,7 @@
     "jwks-rsa": "^3.0.1",
     "mongoose": "^7.0.3",
     "morgan": "~1.9.1",
-    "node": "^16.15.1",
+    "node": "^20.10.0",
     "node-fetch": "^2.6.0"
   },
   "devDependencies": {
