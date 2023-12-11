@@ -5,6 +5,7 @@ const User = require('../models/user');
 const jsonwebtoken = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const isUsernameValid = require('../utils/validationUtils');
+const { deleteUserAndAssociatedData, deleteUser } = require('../services/dataDeletion');
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -174,6 +175,27 @@ router.get('/check/:username', function (req, res) {
         .catch(err => {
             console.error(err);
             res.status(500).json({ error: 'Database connection error' });
+        });
+});
+
+router.delete('/', JwtAuth, function (req, res) {
+    const token = req.headers.authorization.replace('Bearer ', '');
+    const decoded = jsonwebtoken.decode(token);
+
+    deleteUser(decoded.sub)
+        .then(successMessage => {
+            deleteUserAndAssociatedData(decoded.sub)
+                .then(successMessage => {
+                    res.status(200).json({ message: successMessage })
+                })
+                .catch(errorMessage => {
+                    console.error(errorMessage);
+                    res.status(500).json({ error: errorMessage })
+                });
+        })
+        .catch(errorMessage => {
+            console.error(errorMessage);
+            res.status(500).json({ error: errorMessage })
         });
 });
 
