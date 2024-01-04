@@ -8,6 +8,8 @@ const User = require('../models/user');
 const Route = require('../models/route');
 const jsonwebtoken = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const getPoiForPolyQuery = require('../utils/overpassQueryBuilder');
+const getIsochronePoly = require('../utils/mapbox');
 
 // Max number of coordinates which Optimization V1 (route calculation API) will take.
 const MAX_WAYPOINTS_COUNT = 12;
@@ -25,6 +27,39 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const DB_URI = process.env.DB_CONNECTION_STRING;
+
+router.post('/features', function (req, res) {
+    const parsedData = JSON.parse(JSON.stringify(req.body));
+
+    getIsochronePoly(parsedData.center, parsedData.distance).then(data => {
+        if (data.features == null) {
+            res.status(404).send({ message: "No routes available around this location." });
+            return;
+        }
+
+        const query = getPoiForPolyQuery(data.features[0].geometry.coordinates);
+        if (query == null) {
+            res.status(404).send({ message: "No points found." });
+            return;
+        }
+
+        getOsmResults(query).then(data => {
+            data.sort((a, b) => b.nodes.length - a.nodes.length);
+            // Send back the top 10 points, sorted by number of nodes (how many paths they have).
+            // TODO: This may not be a reliable way to order parks.
+            const top10Data = data.slice(0, 10);
+            res.status(200).send({ features: top10Data });
+        })
+            .catch(error => {
+                console.error(error);
+                res.status(500).send('Error fetching points from Overpass');
+            });
+    })
+        .catch(error => {
+            console.error(error);
+            res.status(500).send('Error fetching isochrone poly from Mapbox');
+        });
+});
 
 router.post('/create-route', function (req, res) {
     try {
