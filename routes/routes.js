@@ -8,8 +8,8 @@ const User = require('../models/user');
 const Route = require('../models/route');
 const jsonwebtoken = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const getPoiForPolyQuery = require('../utils/overpassQueryBuilder');
-const getIsochronePoly = require('../utils/mapbox');
+const OverpassHelper = require('../utils/overpass_query_builder');
+const MapboxHelper = require('../utils/mapbox');
 
 // Max number of coordinates which Optimization V1 (route calculation API) will take.
 const MAX_WAYPOINTS_COUNT = 12;
@@ -27,17 +27,18 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const DB_URI = process.env.DB_CONNECTION_STRING;
+const mapboxHelper = new MapboxHelper(process.env.MAPBOX_API_KEY);
 
 router.post('/features', function (req, res) {
     const parsedData = JSON.parse(JSON.stringify(req.body));
 
-    getIsochronePoly(parsedData.center, parsedData.distance).then(data => {
+    mapboxHelper.getIsochronePoly(parsedData.center, parsedData.distance).then(data => {
         if (data.features == null) {
             res.status(404).send({ message: "No routes available around this location." });
             return;
         }
 
-        const query = getPoiForPolyQuery(data.features[0].geometry.coordinates);
+        const query = OverpassHelper.getPoiForPolyQuery(data.features[0].geometry.coordinates);
         if (query == null) {
             res.status(404).send({ message: "No points found." });
             return;
@@ -71,7 +72,7 @@ router.post('/create-route', function (req, res) {
             parsedData.profile = parsedData.profile.substring(0, parsedData.profile.length - "_plus".length);
             improveRoute = true;
         }
-        getMapboxRoute(parsedData)
+        mapboxHelper.getMapboxRoute(parsedData)
             .then(data => {
                 if (!improveRoute) {
                     // If user doesn't want improved route, we can simply send the mapbox-generated route.
@@ -81,7 +82,7 @@ router.post('/create-route', function (req, res) {
 
                 getPoiAlongRoute(data.routes[0], parsedData.waypoints.length)
                     .then(pointsOfInterest => {
-                        getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest)
+                        mapboxHelper.getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest)
                             .then(optimizedData => {
                                 // Optimize API returns routes inside a "trips" array.
                                 // Rename this field to "routes" so our client can process it.
@@ -117,7 +118,7 @@ router.post('/create-route-pathsense', function (req, res) {
         const parsedData = JSON.parse(JSON.stringify(req.body));
         getPathsenseRoute(parsedData)
             .then(data => {
-                if (typeof data != 'int') {
+                if (typeof data != 'number') {
                     data.routeOptions = {
                         "profile": parsedData.profile,
                         "waypoints": parsedData.waypoints
@@ -126,7 +127,7 @@ router.post('/create-route-pathsense', function (req, res) {
                     res.status(200).send(data);
                 } else {
                     // Pass status code from Pathsense as response.
-                    res.status(data);
+                    res.sendStatus(data);
                 }
             })
             .catch(error => {
@@ -141,7 +142,7 @@ router.post('/create-route-pathsense', function (req, res) {
 router.post('/update-route', function (req, res) {
     try {
         const parsedData = JSON.parse(JSON.stringify(req.body));
-        getMapboxOptimizationForWaypoints(parsedData)
+        mapboxHelper.getMapboxOptimizationForWaypoints(parsedData)
             .then(optimizedData => {
                 // Optimize API returns routes inside a "trips" array.
                 // Rename this field to "routes" so our client can process it.
@@ -169,6 +170,11 @@ router.post('/route-metrics', function (req, res) {
         const parsedData = JSON.parse(JSON.stringify(req.body));
         getInfoAboutRoute(parsedData)
             .then(metrics => {
+                if (metrics == null) {
+                    res.status(400).send(metrics);
+                    return;
+                }
+
                 res.status(200).send(metrics);
             })
             .catch(error => {
@@ -311,45 +317,6 @@ router.get('/get-routes-count', JwtAuth, async (req, res) => {
         });
 });
 
-async function getMapboxRoute(parsedData) {
-    const accessToken = process.env.MAPBOX_API_KEY;
-    const profile = parsedData.profile;
-
-    const centerList = [];
-    for (const feature of parsedData.waypoints) {
-        const center = JSON.parse(feature).center;
-        centerList.push(center.join(','));
-    }
-
-    const waypoints = centerList.join(';');
-
-    const routeOptions = {
-        annotations: [
-            'distance',
-            'duration'
-        ],
-        exclude: ['ferry'],
-        steps: true,
-        // We don't need alternatives anymore since we'll be
-        //  making improvements to the first route we get.
-        alternatives: false,
-        overview: 'full',
-        geometries: 'polyline6'
-    };
-
-    try {
-        const response = await fetch(`https://api.mapbox.com/directions/v5/mapbox/${profile}/${waypoints}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
-        console.log("Mapbox response status (Directions API): " + response.status);
-        const data = await response.json();
-        if (response.status !== 200) {
-            console.log(data);
-        }
-        return data;
-    } catch (error) {
-        return console.error(error);
-    }
-}
-
 async function getPathsenseRoute(parsedData) {
     // For now pathsense only supports 1 profile
     const profile = parsedData.profile;
@@ -381,110 +348,7 @@ async function getPathsenseRoute(parsedData) {
         if (response.status == 200) {
             data = await response.json();
         } else if (response.status !== 200) {
-            console.log(data);
-            data = await response.status
-        }
-        return data;
-    } catch (error) {
-        return console.error(error);
-    }
-}
-
-async function getMapboxOptimizationPlusWaypoints(parsedData, pointsOfInterest) {
-    // The Optimization API differs from the Directions API since it aims to optimize
-    //  navigation for the waypoints provided. We'll no longer need to ask the user to
-    //  specify the waypoints in any particular order.
-    const accessToken = process.env.MAPBOX_API_KEY;
-    const profile = parsedData.profile;
-    const roundTrip = false; // This could be set by the client.
-
-    const centerList = [];
-    for (const feature of parsedData.waypoints) {
-        const center = JSON.parse(feature).center;
-        centerList.push(center.join(','));
-    }
-
-    let finalWaypointsString;
-    const additionalWaypointsString = pointsOfInterest.map((wp) => {
-        return `${wp.coordinates[0]},${wp.coordinates[1]}`;
-    }).join(';');
-    if (centerList.length === 2) {
-        // If there are only 2 waypoints (origin and destination), treat he second 
-        //  point as the true destination (destination: 'last') in our route options.
-        if (additionalWaypointsString) {
-            finalWaypointsString = `${centerList[0]};${additionalWaypointsString};${centerList[1]}`;
-        } else {
-            finalWaypointsString = `${centerList[0]};${centerList[1]}`;
-        }
-    } else {
-        finalWaypointsString = centerList.join(';');
-        if (additionalWaypointsString) {
-            finalWaypointsString += `;${additionalWaypointsString}`;
-        }
-    }
-
-    const routeOptions = {
-        annotations: [
-            'distance',
-            'duration'
-        ],
-        steps: true,
-        overview: 'full',
-        geometries: 'polyline6',
-        source: 'first',
-        destination: 'last',
-        roundtrip: roundTrip
-    };
-
-    try {
-        const response = await fetch(`https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${finalWaypointsString}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
-        console.log("Mapbox response status (Optimization API): " + response.status);
-        const data = await response.json();
-        if (response.status !== 200) {
-            console.log(data);
-        }
-        return data;
-    } catch (error) {
-        return console.error(error);
-    }
-}
-
-async function getMapboxOptimizationForWaypoints(parsedData) {
-    // This method should be used to calculate a route with known points.
-    //  (when we already know the points of interest). It will return the 
-    //  shortest path between all of them.
-    const accessToken = process.env.MAPBOX_API_KEY;
-    const profile = parsedData.profile;
-    const roundTrip = false; // This could be set by the client.
-
-    const waypoints = parsedData.waypoints.map((waypoint) => {
-        const parsedWaypoint = JSON.parse(waypoint);
-        const [longitude, latitude] = parsedWaypoint.coordinates;
-        return `${longitude},${latitude}`;
-    });
-
-    const finalWaypointsString = waypoints.join(';');
-
-    const routeOptions = {
-        annotations: [
-            'distance',
-            'duration'
-        ],
-        steps: true,
-        overview: 'full',
-        geometries: 'polyline6',
-        source: 'first',
-        destination: 'last',
-        roundtrip: roundTrip
-    };
-
-
-    try {
-        const response = await fetch(`https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${finalWaypointsString}?access_token=${accessToken}&${new URLSearchParams(routeOptions)}`);
-        console.log("Mapbox response status (Optimization API): " + response.status);
-        const data = await response.json();
-        if (response.status !== 200) {
-            console.log(data);
+            data = await response.status;
         }
         return data;
     } catch (error) {

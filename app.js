@@ -8,6 +8,7 @@ var logger = require('morgan');
 var AuthAppToken = require('./middleware/appToken');
 
 var routesRouter = require('./routes/routes');
+var routesV1Router = require('./routes/v1/routes');
 var postsRouter = require('./routes/posts');
 var usersRouter = require('./routes/users');
 
@@ -38,6 +39,7 @@ app.use(bodyParser.urlencoded({
 }));
 
 app.use('/routes', routesRouter);
+app.use('/v1/routes', routesV1Router);
 app.use('/posts', postsRouter);
 app.use('/users', usersRouter);
 
