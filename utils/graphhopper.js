@@ -1,3 +1,4 @@
+const { HttpStatusCode } = require('axios');
 const CustomModelGravelCycling = require('../custom_routing/bike_gravel.json')
 
 // Use local '.env' if not in production.
@@ -41,7 +42,8 @@ class GraphhopperHelper {
             }
             return data;
         } catch (error) {
-            return console.error(error);
+            console.error(error)
+            return HttpStatusCode.ServiceUnavailable;
         }
     }
 }
@@ -55,9 +57,9 @@ function getGraphhopperOptions(waypoints) {
             'ferry',
             'tunnel'
         ],
-        details: ['road_class', 'surface'],
+        details: ['road_class', 'surface', 'leg_distance', 'leg_time'],
         locale: 'en',
-        instructions: false,
+        instructions: true,
         calc_points: true,
         elevation: true,
         optimize: false,
@@ -67,7 +69,7 @@ function getGraphhopperOptions(waypoints) {
         // heading_penalty: 120,
         // pass_through: false,
         algorithm: 'alternative_route', //astarbi round_trip alternative_route
-        'ch.disable': 'true',
+        'ch.disable': 'false',
         // 'round_trip.distance': '5000',
         // 'round_trip.seed': '0',
         'alternative_route.max_paths': 2,

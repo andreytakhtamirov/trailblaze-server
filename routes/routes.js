@@ -76,6 +76,11 @@ router.post('/create-route', function (req, res) {
             .then(data => {
                 if (!improveRoute) {
                     // If user doesn't want improved route, we can simply send the mapbox-generated route.
+                    data.routeOptions = {
+                        "profile": parsedData.profile,
+                        "waypoints": parsedData.waypoints
+                    };
+
                     res.status(200).send(data);
                     return;
                 }

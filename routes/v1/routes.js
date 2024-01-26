@@ -14,6 +14,11 @@ router.post('/create-route-graphhopper', function (req, res) {
         GraphhopperHelper.getGraphhopperRoute(parsedData)
             .then(data => {
                 if (typeof data != 'number') {
+                    data.routeOptions = {
+                        "profile": parsedData.profile,
+                        "waypoints": parsedData.waypoints
+                    };
+
                     res.status(200).send(data);
                 } else {
                     // Pass status code from Graphhopper as response.
