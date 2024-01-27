@@ -74,8 +74,18 @@ router.post('/create-route', function (req, res) {
         }
         mapboxHelper.getMapboxRoute(parsedData)
             .then(data => {
+                if (typeof data == 'number') {
+                    res.status(data).send('Error creating route');
+                    return;
+                }
+
                 if (!improveRoute) {
                     // If user doesn't want improved route, we can simply send the mapbox-generated route.
+                    data.routeOptions = {
+                        "profile": parsedData.profile,
+                        "waypoints": parsedData.waypoints
+                    };
+
                     res.status(200).send(data);
                     return;
                 }
