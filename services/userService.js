@@ -75,9 +75,8 @@ class UserService {
                 return res.status(400).json({ error: 'Title is too long' });
             }
 
-            let imageUrl = null;
-            if (parsedData.imageUrl != null) {
-                imageUrl = parsedData.imageUrl;
+            if (parsedData.imageUrl == null) {
+                return res.status(400).json({ error: 'Route must include static map image URL' });
             }
 
             let isGraphhopperRoute = false;
@@ -89,7 +88,7 @@ class UserService {
                 title: parsedData.title,
                 type: isGraphhopperRoute ? 'gh' : 'mb',
                 route: parsedData.route,
-                imageUrl: imageUrl,
+                imageUrl: parsedData.imageUrl,
                 routeOptions: parsedData.routeOptions,
             });
 
