@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 const User = require('../models/user');
 const Route = require('../models/route');
+const {
+    kMaxRouteTitleLength,
+} = require('../constants/input');
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -68,6 +71,10 @@ class UserService {
 
     async saveRoute(userId, parsedData, res) {
         try {
+            if (parsedData.title.length > kMaxRouteTitleLength) {
+                return res.status(400).json({ error: 'Title is too long' });
+            }
+
             let imageUrl = null;
             if (parsedData.imageUrl != null) {
                 imageUrl = parsedData.imageUrl;

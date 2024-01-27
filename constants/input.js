@@ -3,4 +3,5 @@ module.exports = {
     kMaxUsernameLength: 20,
     kUsernameRegex: /^[a-zA-Z0-9_]+$/,
     kBannedCharacters: ' ',
+    kMaxRouteTitleLength: 50,
 };
