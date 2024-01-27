@@ -38,7 +38,17 @@ class GraphhopperHelper {
                 data = await response.json();
             } else if (response.status !== 200) {
                 console.log(`Graphhopper instance: ${GRAPHHOPPER_ENDPOINT}`);
-                data = response.status;
+                const message = (await response.json()).message;
+                if (message.toLowerCase().includes('cannot find')) {
+                    console.log(`Requested point is outside of allowed range. ${message}`);
+                    data = HttpStatusCode.NotAcceptable;
+                } else if (message.toLowerCase().includes('too far')) {
+                    console.log(`Requested points are too far apart. ${message}`);
+                    data = HttpStatusCode.UnprocessableEntity;
+                } else {
+                    console.log(`Other Graphhopper error: ${message}`);
+                    data = response.status;
+                }
             }
             return data;
         } catch (error) {
