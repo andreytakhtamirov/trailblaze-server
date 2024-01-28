@@ -75,16 +75,27 @@ class UserService {
             if (parsedData.title.length > kMaxRouteTitleLength) {
                 return res.status(HttpStatusCode.BadRequest).json({ error: 'Title is too long' });
             }
-
+    
             if (parsedData.imageUrl == null) {
                 return res.status(HttpStatusCode.BadRequest).json({ error: 'Route must include static map image URL' });
             }
-
+    
             let isGraphhopperRoute = false;
             if (parsedData.routeOptions.profile == 'gravel_cycling') {
                 isGraphhopperRoute = true;
             }
-
+    
+            const existingUser = await User.findOne({ _id: userId });
+    
+            if (!existingUser) {
+                console.error('User not found when saving route');
+                return res.status(HttpStatusCode.NotFound).json({ error: 'User not found' });
+            }
+    
+            if (decoded.sub !== existingUser.user_sub) {
+                return res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
+            }
+    
             const route = new Route({
                 title: parsedData.title,
                 type: isGraphhopperRoute ? 'gh' : 'mb',
@@ -92,78 +103,45 @@ class UserService {
                 imageUrl: parsedData.imageUrl,
                 routeOptions: parsedData.routeOptions,
             });
-
-            route.save().then(savedRoute => {
-                User.findOne({ _id: userId })
-                    .then(existingUser => {
-                        if (existingUser) {
-                            if (decoded.sub !== existingUser.user_sub) {
-                                res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
-                                return NULL;
-                            }
-
-                            // We have an existing user. Update to include new route ID.
-                            existingUser.routes.push(savedRoute);
-                            return existingUser.save();
-                        } else {
-                            console.error('User not found when saving route');
-                            res.status(HttpStatusCode.NotFound).json({ error: 'User not found' });
-                            return NULL;
-                        }
-                    })
-                    .then(savedUser => {
-                        if (savedUser == null) {
-                            return;
-                        }
-                        res.status(HttpStatusCode.Created).json(savedRoute.id);
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        res.status(HttpStatusCode.InternalServerError).send('Internal server error');
-                    });
-            });
+    
+            const savedRoute = await route.save();
+    
+            // Update user's profile to include the new route ID
+            existingUser.routes.push(savedRoute);
+            await existingUser.save();
+    
+            return res.status(HttpStatusCode.Created).json(savedRoute.id);
         } catch (error) {
             console.error('Error saving route:', error);
-            res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
+            return res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
         }
-    }
+    }    
 
     async deleteRoute(decoded, userId, routeId, res) {
         try {
-            Route.deleteOne({ _id: routeId })
-                .then(() => {
-                    User.findOne({ _id: userId })
-                        .then(existingUser => {
-                            if (existingUser) {
-                                if (decoded.sub !== existingUser.user_sub) {
-                                    res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
-                                    return NULL;
-                                }
-
-                                existingUser.routes.pull(routeId);
-                                return existingUser.save();
-                            } else {
-                                console.error('User not found when deleting route');
-                                res.status(HttpStatusCode.NotFound).json({ error: 'User not found' });
-                                return NULL;
-                            }
-                        })
-                        .then(savedUser => {
-                            if (savedUser == null) {
-                                return;
-                            }
-                            res.status(HttpStatusCode.NoContent).send();
-                        })
-                        .catch(err => {
-                            console.error(err);
-                            res.status(HttpStatusCode.InternalServerError).send('Internal server error');
-                        });
-                });
+            const existingUser = await User.findOne({ _id: userId });
+    
+            if (!existingUser) {
+                console.error('User not found when deleting route');
+                return res.status(HttpStatusCode.NotFound).json({ error: 'User not found' });
+            }
+    
+            if (decoded.sub !== existingUser.user_sub) {
+                return res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
+            }
+    
+            await Route.deleteOne({ _id: routeId });
+    
+            // Update user's profile to remove the deleted route ID
+            existingUser.routes.pull(routeId);
+            await existingUser.save();
+    
+            return res.status(HttpStatusCode.NoContent).send();
         } catch (error) {
-            console.error('Error saving route:', error);
-            res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
+            console.error('Error deleting route:', error);
+            return res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
         }
-    }
+    }    
 }
 
 module.exports = new UserService();
