@@ -4,6 +4,7 @@ const Route = require('../models/route');
 const {
     kMaxRouteTitleLength,
 } = require('../constants/input');
+const { HttpStatusCode } = require('axios');
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -41,15 +42,15 @@ class UserService {
                     username: existingUser.username,
                     profile_picture: existingUser.profile_picture,
                 };
-                res.status(200).json(userProfile);
+                res.status(HttpStatusCode.Ok).json(userProfile);
             } else {
                 // User does not exist, create profile.
                 const newUserProfile = await this.createUserProfile(decoded);
-                res.status(201).json(newUserProfile);
+                res.status(HttpStatusCode.Created).json(newUserProfile);
             }
         } catch (error) {
             console.error('Error getting user:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
         }
     }
 
@@ -69,14 +70,14 @@ class UserService {
         }
     }
 
-    async saveRoute(userId, parsedData, res) {
+    async saveRoute(decoded, userId, parsedData, res) {
         try {
             if (parsedData.title.length > kMaxRouteTitleLength) {
-                return res.status(400).json({ error: 'Title is too long' });
+                return res.status(HttpStatusCode.BadRequest).json({ error: 'Title is too long' });
             }
 
             if (parsedData.imageUrl == null) {
-                return res.status(400).json({ error: 'Route must include static map image URL' });
+                return res.status(HttpStatusCode.BadRequest).json({ error: 'Route must include static map image URL' });
             }
 
             let isGraphhopperRoute = false;
@@ -96,53 +97,71 @@ class UserService {
                 User.findOne({ _id: userId })
                     .then(existingUser => {
                         if (existingUser) {
+                            if (decoded.sub !== existingUser.user_sub) {
+                                res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
+                                return NULL;
+                            }
+
                             // We have an existing user. Update to include new route ID.
                             existingUser.routes.push(savedRoute);
                             return existingUser.save();
                         } else {
                             console.error('User not found when saving route');
-                            res.status(404).json({ error: 'User not found' });
+                            res.status(HttpStatusCode.NotFound).json({ error: 'User not found' });
+                            return NULL;
                         }
                     })
                     .then(savedUser => {
-                        res.status(201).json(savedRoute.id);
+                        if (savedUser == null) {
+                            return;
+                        }
+                        res.status(HttpStatusCode.Created).json(savedRoute.id);
                     })
                     .catch(err => {
                         console.error(err);
-                        res.status(500).send('Internal server error');
+                        res.status(HttpStatusCode.InternalServerError).send('Internal server error');
                     });
             });
         } catch (error) {
             console.error('Error saving route:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
         }
     }
 
-    async deleteRoute(userId, routeId, res) {
+    async deleteRoute(decoded, userId, routeId, res) {
         try {
             Route.deleteOne({ _id: routeId })
                 .then(() => {
                     User.findOne({ _id: userId })
                         .then(existingUser => {
                             if (existingUser) {
+                                if (decoded.sub !== existingUser.user_sub) {
+                                    res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
+                                    return NULL;
+                                }
+
                                 existingUser.routes.pull(routeId);
                                 return existingUser.save();
                             } else {
                                 console.error('User not found when deleting route');
-                                res.status(404).json({ error: 'User not found' });
+                                res.status(HttpStatusCode.NotFound).json({ error: 'User not found' });
+                                return NULL;
                             }
                         })
                         .then(savedUser => {
-                            res.status(204).send();
+                            if (savedUser == null) {
+                                return;
+                            }
+                            res.status(HttpStatusCode.NoContent).send();
                         })
                         .catch(err => {
                             console.error(err);
-                            res.status(500).send('Internal server error');
+                            res.status(HttpStatusCode.InternalServerError).send('Internal server error');
                         });
                 });
         } catch (error) {
             console.error('Error saving route:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(HttpStatusCode.InternalServerError).json({ error: 'Internal server error' });
         }
     }
 }
