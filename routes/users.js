@@ -6,6 +6,7 @@ const jsonwebtoken = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const isUsernameValid = require('../utils/validationUtils');
 const { deleteUserAndAssociatedData, deleteUser } = require('../services/dataDeletion');
+const { HttpStatusCode } = require('axios');
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -29,6 +30,7 @@ router.get('/', JwtAuth, function (req, res) {
                 .then(existingUser => {
                     if (existingUser) {
                         const userProfile = {
+                            id: existingUser.id,
                             username: existingUser.username,
                             profile_picture: existingUser.profile_picture,
                         };
@@ -85,7 +87,12 @@ router.post('/', JwtAuth, function (req, res) {
                                 }
                                 existingUser.save()
                                     .then(updatedUser => {
-                                        return res.status(200).json(updatedUser);
+                                        const userProfile = {
+                                            id: updatedUser.id,
+                                            username: updatedUser.username,
+                                            profile_picture: updatedUser.profile_picture,
+                                        };
+                                        return res.status(HttpStatusCode.Ok).json(userProfile);
                                     })
                                     .catch(err => {
                                         console.error(err);
@@ -123,7 +130,12 @@ router.post('/', JwtAuth, function (req, res) {
                                 // Save the new user to the database.
                                 newUser.save()
                                     .then(savedUser => {
-                                        return res.status(201).json(savedUser);
+                                        const userProfile = {
+                                            id: savedUser.id,
+                                            username: savedUser.username,
+                                            profile_picture: savedUser.profile_picture,
+                                        };
+                                        return res.status(HttpStatusCode.Created).json(userProfile);
                                     })
                                     .catch(err => {
                                         console.error(err);
