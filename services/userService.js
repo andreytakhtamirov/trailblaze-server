@@ -38,7 +38,7 @@ class UserService {
             if (existingUser) {
                 // User exists, return info.
                 const userProfile = {
-                    id: existingUser._id,
+                    id: existingUser.id,
                     username: existingUser.username,
                     profile_picture: existingUser.profile_picture,
                 };
@@ -46,7 +46,12 @@ class UserService {
             } else {
                 // User does not exist, create profile.
                 const newUserProfile = await this.createUserProfile(decoded);
-                res.status(HttpStatusCode.Created).json(newUserProfile);
+                const userProfile = {
+                    id: newUserProfile.id,
+                    username: newUserProfile.username,
+                    profile_picture: newUserProfile.profile_picture,
+                };
+                res.status(HttpStatusCode.Created).json(userProfile);
             }
         } catch (error) {
             console.error('Error getting user:', error);
@@ -130,10 +135,14 @@ class UserService {
                 return res.status(HttpStatusCode.Forbidden).json({ error: 'Unauthorized' });
             }
     
-            await Route.deleteOne({ _id: routeId });
+            // Check if the routeId exists in the user's routes
+            const routeIndex = existingUser.routes.indexOf(routeId);
+            if (routeIndex === -1) {
+                return res.status(HttpStatusCode.NotFound).json({ error: 'Route not found in user routes' });
+            }
     
-            // Update user's profile to remove the deleted route ID
-            existingUser.routes.pull(routeId);
+            await Route.deleteOne({ _id: routeId });
+            existingUser.routes.splice(routeIndex, 1);
             await existingUser.save();
     
             return res.status(HttpStatusCode.NoContent).send();
