@@ -10,14 +10,17 @@ if (process.env.NODE_ENV !== 'production') {
 const GRAPHHOPPER_ENDPOINT = process.env.GRAPHHOPPER_ENDPOINT;
 
 class GraphhopperHelper {
-    static async getGraphhopperRoute(parsedData) {
+    static async getRoute(parsedData) {
         const waypoints = [];
         for (const feature of parsedData.waypoints) {
             const center = JSON.parse(feature).center;
             waypoints.push([center[0], center[1]]);
         }
 
-        const query = JSON.stringify(getGraphhopperOptions(waypoints));
+        const isRoundTrip = parsedData.mode == 'round_trip';
+
+        let options = !isRoundTrip ? getOptions(waypoints) : getOptionsRoundTrip(waypoints, parsedData.distance);
+        const query = JSON.stringify(options);
 
         try {
             const response = await fetch(
@@ -58,7 +61,7 @@ class GraphhopperHelper {
     }
 }
 
-function getGraphhopperOptions(waypoints) {
+function getOptions(waypoints) {
     return {
         profile: 'bike_gravel',
         points: waypoints,
@@ -75,16 +78,37 @@ function getGraphhopperOptions(waypoints) {
         optimize: false,
         debug: false,
         points_encoded: true,
-        // heading: 0,
-        // heading_penalty: 120,
-        // pass_through: false,
         algorithm: 'alternative_route', //astarbi round_trip alternative_route
         'ch.disable': 'false',
-        // 'round_trip.distance': '5000',
-        // 'round_trip.seed': '0',
         'alternative_route.max_paths': 2,
         'alternative_route.max_weight_factor': 3.5,
         'alternative_route.max_share_factor': 1.4,
+        custom_model: CustomModelGravelCycling
+    }
+}
+
+function getOptionsRoundTrip(waypoints, distance) {
+    let seed = Math.random() * 1000;
+    return {
+        profile: 'bike_gravel',
+        points: waypoints,
+        snap_preventions: [
+            'motorway',
+            'ferry',
+            'tunnel'
+        ],
+        details: ['road_class', 'surface', 'leg_distance', 'leg_time'],
+        locale: 'en',
+        instructions: true,
+        calc_points: true,
+        elevation: true,
+        optimize: false,
+        debug: false,
+        points_encoded: true,
+        algorithm: 'round_trip',
+        'ch.disable': false,
+        'round_trip.distance': distance,
+        'round_trip.seed': seed,
         custom_model: CustomModelGravelCycling
     }
 }

@@ -11,7 +11,7 @@ if (process.env.NODE_ENV !== 'production') {
 router.post('/create-route-graphhopper', function (req, res) {
     try {
         const parsedData = JSON.parse(JSON.stringify(req.body));
-        GraphhopperHelper.getGraphhopperRoute(parsedData)
+        GraphhopperHelper.getRoute(parsedData)
             .then(data => {
                 if (typeof data != 'number') {
                     data.routeOptions = {
@@ -31,6 +31,7 @@ router.post('/create-route-graphhopper', function (req, res) {
             });
     } catch (e) {
         console.log("Error creating route: " + e);
+        res.status(500).send('Error creating route.');
     }
 });
 
