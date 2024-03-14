@@ -88,7 +88,8 @@ function getOptions(waypoints) {
 }
 
 function getOptionsRoundTrip(waypoints, distance) {
-    let seed = Math.random() * 1000;
+    // Integer seed to randomize calculation.
+    let seed = Math.floor(Math.random() * 1000);
     return {
         profile: 'bike_gravel',
         points: waypoints,
@@ -106,7 +107,7 @@ function getOptionsRoundTrip(waypoints, distance) {
         debug: false,
         points_encoded: true,
         algorithm: 'round_trip',
-        'ch.disable': false,
+        'ch.disable': true,
         'round_trip.distance': distance,
         'round_trip.seed': seed,
         custom_model: CustomModelGravelCycling
