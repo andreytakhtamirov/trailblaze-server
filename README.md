@@ -1,7 +1,7 @@
 # About
 trailblaze-server is the server component of the Trailblaze project. It works together with [trailblaze-flutter](https://github.com/andreytakhtamirov/trailblaze-flutter), to provide a REST API for fetching routes, reading/writing user-generated content.
 
-**[NEW]** Uses [trailblaze-pathsense](https://github.com/andreytakhtamirov/trailblaze-pathsense) for delivering an even more adventurous experience.
+**[NEW]** Uses [graphhopper](https://github.com/graphhopper/graphhopper) for delivering an even more adventurous experience.
 
 # Clone the repo
 
