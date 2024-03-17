@@ -1,5 +1,7 @@
 const { HttpStatusCode } = require('axios');
 const CustomModelGravelCycling = require('../custom_routing/bike_gravel.json')
+const CustomModelNormalCycling = require('../custom_routing/bike_normal.json')
+const CustomModelHike = require('../custom_routing/hike.json')
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -18,8 +20,16 @@ class GraphhopperHelper {
         }
 
         const isRoundTrip = parsedData.mode == 'round_trip';
-
         let options = !isRoundTrip ? getOptions(waypoints) : getOptionsRoundTrip(waypoints, parsedData.distance);
+        
+        if (parsedData.profile == 'cycling') {
+            options.custom_model = CustomModelNormalCycling;
+        } else if (parsedData.profile == 'gravel_cycling') {
+            options.custom_model = CustomModelGravelCycling;
+        } else if (parsedData.profile == 'walking') {
+            options.custom_model = CustomModelHike;
+        }
+        
         const query = JSON.stringify(options);
 
         try {
@@ -83,7 +93,6 @@ function getOptions(waypoints) {
         'alternative_route.max_paths': 2,
         'alternative_route.max_weight_factor': 3.5,
         'alternative_route.max_share_factor': 1.4,
-        custom_model: CustomModelGravelCycling
     }
 }
 
@@ -110,7 +119,6 @@ function getOptionsRoundTrip(waypoints, distance) {
         'ch.disable': true,
         'round_trip.distance': distance,
         'round_trip.seed': seed,
-        custom_model: CustomModelGravelCycling
     }
 }
 
