@@ -1,7 +1,7 @@
 const { HttpStatusCode } = require('axios');
 const CustomModelGravelCycling = require('../custom_routing/bike_gravel.json')
 const CustomModelNormalCycling = require('../custom_routing/bike_normal.json')
-const CustomModelHike = require('../custom_routing/hike.json')
+const CustomModelWalk = require('../custom_routing/walk.json');
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -21,17 +21,27 @@ class GraphhopperHelper {
 
         const isRoundTrip = parsedData.mode == 'round_trip';
         let options = !isRoundTrip ? getOptions(waypoints) : getOptionsRoundTrip(waypoints, parsedData.distance);
-        
+
         if (parsedData.profile == 'cycling') {
+            options.profile = 'bike_gravel'
             options.custom_model = CustomModelNormalCycling;
         } else if (parsedData.profile == 'gravel_cycling') {
+            options.profile = 'bike_gravel'
             options.custom_model = CustomModelGravelCycling;
         } else if (parsedData.profile == 'walking') {
-            options.custom_model = CustomModelHike;
+            options.profile = 'foot'
+            options.custom_model = CustomModelWalk;
         }
-        
-        const query = JSON.stringify(options);
 
+        if (isRoundTrip) {
+            options.custom_model.distance_influence = 0;
+        } else if (parsedData.influence == null) {
+            options.custom_model.distance_influence = 1000000; // Default value for legacy clients
+        } else {
+            options.custom_model.distance_influence = Math.abs(parsedData.influence); // Influence MUST be positive.
+        }
+
+        const query = JSON.stringify(options);
         try {
             const response = await fetch(
                 `${GRAPHHOPPER_ENDPOINT}/route`,
@@ -41,7 +51,7 @@ class GraphhopperHelper {
                         'Content-Type': 'application/json'
                     },
                     body: query,
-                }
+            }
             );
 
             console.log(`Graphhopper response status: ${response.status}`);
@@ -73,7 +83,6 @@ class GraphhopperHelper {
 
 function getOptions(waypoints) {
     return {
-        profile: 'bike_gravel',
         points: waypoints,
         snap_preventions: [
             'motorway',
@@ -100,7 +109,6 @@ function getOptionsRoundTrip(waypoints, distance) {
     // Integer seed to randomize calculation.
     let seed = Math.floor(Math.random() * 1000);
     return {
-        profile: 'bike_gravel',
         points: waypoints,
         snap_preventions: [
             'motorway',
