@@ -26,7 +26,7 @@
         },
         {
             "if": "road_class==FOOTWAY",
-            "multiply_by": "0.001"
+            "multiply_by": "0.01"
         },
         {
             "else_if": "road_class==SERVICE",
