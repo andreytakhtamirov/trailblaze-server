@@ -36,9 +36,9 @@ class GraphhopperHelper {
         if (isRoundTrip) {
             options.custom_model.distance_influence = 0;
         } else if (parsedData.influence == null) {
-            options.custom_model.distance_influence = 1000000; // Default value for legacy clients
+            options.custom_model.distance_influence = 1000000; // Default value for legacy clients.
         } else {
-            options.custom_model.distance_influence = Math.abs(parsedData.influence); // Influence MUST be positive.
+            options.custom_model.distance_influence = parsedData.influence;
         }
 
         const query = JSON.stringify(options);
