@@ -1,0 +1,12 @@
+{
+  "priority": [
+    {
+      "if": "road_class==PATH",
+      "multiply_by": "2"
+    },
+    {
+      "else": "",
+      "multiply_by": "0.1"
+    }
+  ]
+}
