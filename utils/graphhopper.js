@@ -44,6 +44,8 @@ class GraphhopperHelper {
         if (parsedData.ignore_area != null) {
             const ignore_area = parsedData.ignore_area;
             options.custom_model.areas.features[0].geometry = ignore_area;
+        } else {
+            options.custom_model.areas.features[0].geometry = {"type":"Polygon","bbox":null,"coordinates":[[]]};
         }
 
         const query = JSON.stringify(options);
