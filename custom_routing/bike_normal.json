@@ -1,5 +1,20 @@
 {
+    "areas": {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": "ignore",
+                "properties": {},
+                "geometry": {}
+            }
+        ]
+    },
     "priority": [
+        {
+            "if": "in_ignore",
+            "multiply_by": "0"
+        },
         {
             "if": "(surface==MISSING)",
             "multiply_by": "0.8"
