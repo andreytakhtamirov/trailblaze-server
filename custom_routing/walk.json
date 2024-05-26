@@ -1,5 +1,20 @@
 {
+  "areas": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "id": "ignore",
+        "properties": {},
+        "geometry": {}
+      }
+    ]
+  },
   "priority": [
+    {
+      "if": "in_ignore",
+      "multiply_by": "0"
+    },
     {
       "if": "road_class==PATH",
       "multiply_by": "2"

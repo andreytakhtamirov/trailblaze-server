@@ -41,6 +41,11 @@ class GraphhopperHelper {
             options.custom_model.distance_influence = parsedData.influence;
         }
 
+        if (parsedData.ignore_area != null) {
+            const ignore_area = parsedData.ignore_area;
+            options.custom_model.areas.features[0].geometry = ignore_area;
+        }
+
         const query = JSON.stringify(options);
         try {
             const response = await fetch(
