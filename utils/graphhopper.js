@@ -1,7 +1,5 @@
 const { HttpStatusCode } = require('axios');
-const CustomModelGravelCycling = require('../custom_routing/bike_gravel.json')
-const CustomModelNormalCycling = require('../custom_routing/bike_normal.json')
-const CustomModelWalk = require('../custom_routing/walk.json');
+const OptionsResolver = require('./options_resolver.js')
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
@@ -19,36 +17,8 @@ class GraphhopperHelper {
             waypoints.push([center[0], center[1]]);
         }
 
-        const isRoundTrip = parsedData.mode == 'round_trip';
-        let options = !isRoundTrip ? getOptions(waypoints) : getOptionsRoundTrip(waypoints, parsedData.distance);
-
-        if (parsedData.profile == 'cycling') {
-            options.profile = 'bike_gravel'
-            options.custom_model = CustomModelNormalCycling;
-        } else if (parsedData.profile == 'gravel_cycling') {
-            options.profile = 'bike_gravel'
-            options.custom_model = CustomModelGravelCycling;
-        } else if (parsedData.profile == 'walking') {
-            options.profile = 'foot'
-            options.custom_model = CustomModelWalk;
-        }
-
-        if (isRoundTrip) {
-            options.custom_model.distance_influence = 0;
-        } else if (parsedData.influence == null) {
-            options.custom_model.distance_influence = 1000000; // Default value for legacy clients.
-        } else {
-            options.custom_model.distance_influence = parsedData.influence;
-        }
-
-        if (parsedData.ignore_area != null) {
-            const ignore_area = parsedData.ignore_area;
-            options.custom_model.areas.features[0].geometry = ignore_area;
-        } else {
-            options.custom_model.areas.features[0].geometry = {"type":"Polygon","bbox":null,"coordinates":[[]]};
-        }
-
-        const query = JSON.stringify(options);
+        const resolver = new OptionsResolver(parsedData, waypoints);
+        const query = JSON.stringify(resolver.resolveOptions());
         try {
             const response = await fetch(
                 `${GRAPHHOPPER_ENDPOINT}/route`,
@@ -58,7 +28,7 @@ class GraphhopperHelper {
                         'Content-Type': 'application/json'
                     },
                     body: query,
-            }
+                }
             );
 
             console.log(`Graphhopper response status: ${response.status}`);
@@ -85,55 +55,6 @@ class GraphhopperHelper {
             console.error(error)
             return HttpStatusCode.ServiceUnavailable;
         }
-    }
-}
-
-function getOptions(waypoints) {
-    return {
-        points: waypoints,
-        snap_preventions: [
-            'motorway',
-            'ferry',
-            'tunnel'
-        ],
-        details: ['road_class', 'surface', 'leg_distance', 'leg_time'],
-        locale: 'en',
-        instructions: true,
-        calc_points: true,
-        elevation: true,
-        optimize: false,
-        debug: false,
-        points_encoded: true,
-        algorithm: 'alternative_route', //astarbi round_trip alternative_route
-        'ch.disable': 'false',
-        'alternative_route.max_paths': 2,
-        'alternative_route.max_weight_factor': 3.5,
-        'alternative_route.max_share_factor': 1.4,
-    }
-}
-
-function getOptionsRoundTrip(waypoints, distance) {
-    // Integer seed to randomize calculation.
-    let seed = Math.floor(Math.random() * 1000);
-    return {
-        points: waypoints,
-        snap_preventions: [
-            'motorway',
-            'ferry',
-            'tunnel'
-        ],
-        details: ['road_class', 'surface', 'leg_distance', 'leg_time'],
-        locale: 'en',
-        instructions: true,
-        calc_points: true,
-        elevation: true,
-        optimize: false,
-        debug: false,
-        points_encoded: true,
-        algorithm: 'round_trip',
-        'ch.disable': true,
-        'round_trip.distance': distance,
-        'round_trip.seed': seed,
     }
 }
 
