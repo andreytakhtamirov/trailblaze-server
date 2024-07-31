@@ -85,11 +85,6 @@ class UserService {
                 return res.status(HttpStatusCode.BadRequest).json({ error: 'Route must include static map image URL' });
             }
     
-            let isGraphhopperRoute = false;
-            if (parsedData.routeOptions.profile == 'gravel_cycling') {
-                isGraphhopperRoute = true;
-            }
-    
             const existingUser = await User.findOne({ _id: userId });
     
             if (!existingUser) {
@@ -103,7 +98,7 @@ class UserService {
     
             const route = new Route({
                 title: parsedData.title,
-                type: isGraphhopperRoute ? 'gh' : 'mb',
+                type: 'gh',
                 route: parsedData.route,
                 imageUrl: parsedData.imageUrl,
                 routeOptions: parsedData.routeOptions,
