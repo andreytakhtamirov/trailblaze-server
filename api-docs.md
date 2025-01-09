@@ -2,7 +2,12 @@
 
 ## Index
 
-
+1. [Route Endpoints](#route-endpoints)
+2. [User Endpoints](#user-endpoints)
+3. [Middleware](#middleware)
+4. [Example Request and Response](#example-request-and-response)
+5. [General Error Codes](#general-error-codes)
+6. [Notes](#notes)
 
 ## Base URL
 
@@ -177,8 +182,13 @@ This middleware validates the JWT token passed in the Authorization header for e
 ### Get User Profile
 
 #### Request:
-- GET ```https://api.trailblaze.cc/v1/users``` HTTP/1.1 
-`Authorization`: Bearer <your_jwt_token>
+- GET ```https://api.trailblaze.cc/v1/users``` 
+
+    Header: 
+    ```
+    TRAILBLAZE-APP-TOKEN: <secret_token>
+    Authorization: Bearer <your_jwt_token>
+    ```
 #### Response:
 
 ```
