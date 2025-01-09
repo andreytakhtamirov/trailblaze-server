@@ -3,7 +3,11 @@
 ## Index
 
 1. [Route Endpoints](#route-endpoints)
+     1. [Create Route (Graphhopper)](#create-route-graphhopper)
 2. [User Endpoints](#user-endpoints)
+     1. [Get User Profile](#get-user-profile)
+     2. [Save User Profile](#save-user-route)
+     3. [Delete User Route](#delete-user-route)
 3. [Middleware](#middleware)
 4. [Example Request and Response](#example-request-and-response)
 5. [General Error Codes](#general-error-codes)
@@ -45,7 +49,7 @@ TRAILBLAZE-APP-TOKEN: <token>
 
     - profile: The routing profile (e.g., ```walking, cycling, gravel_cycling```).
 
-    - waypoints: An array of JSON strings containing coordinates.
+    - waypoints: An array of JSON coordinates.
 
     #### Response Codes:
 
@@ -179,6 +183,47 @@ This middleware validates the JWT token passed in the Authorization header for e
 
 ## Example Request and Response
 
+### Create Route (Graphhopper)
+
+#### Request:
+- GET ```https://api.trailblaze.cc/v1/routes/create-route-graphhopper``` 
+
+    Header: 
+    ```
+    TRAILBLAZE-APP-TOKEN: <secret_token>
+    ```
+
+**Response**:
+
+```
+{
+	"title" : string,
+	"type" : string,
+	"route" : {
+		"distance" : float,
+		"weight" : float,
+		"time" : long,
+		"points_encoded" : bool,
+		"bbox" : [],
+		"points" : "<encoded points>",
+		"instructions" : [],
+		"legs" : [ ],
+		"details" : {
+			"surface" : [],
+			"leg_distance" : [],
+			"road_class" : []
+		},
+		"ascend" : float,
+		"descend" : float,
+	},
+	"imageUrl" : "<Mapbox encoded route style url>",
+	"routeOptions" : {
+		"profile" : "gravel_cycling",
+		"waypoints" : []
+	},
+}
+```
+
 ### Get User Profile
 
 #### Request:
@@ -222,3 +267,4 @@ This middleware validates the JWT token passed in the Authorization header for e
 - Ensure that the ```Authorization``` header is included with the ```Bearer <token>``` format for each user-related request.
 
 - Client must handle token expiration and renew tokens as necessary.
+
