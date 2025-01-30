@@ -22,3 +22,8 @@ GRAPHHOPPER_ENDPOINT={address of graphhopper instance}
 # Usage
 
 `npm start` to run the server.
+
+# API Reference
+
+For detailed information on how to use the API, including endpoint descriptions, request/response formats, and examples, please refer to the [API Documentation](https://github.com/andreytakhtamirov/trailblaze-server/blob/main/api-docs.md).
+
