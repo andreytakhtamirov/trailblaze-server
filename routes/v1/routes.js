@@ -1,38 +1,39 @@
-var express = require('express');
+var express = require("express");
 var router = express.Router();
-const GraphhopperHelper = require('../../utils/graphhopper');
+const GraphhopperHelper = require("../../utils/graphhopper");
 
 // Use local '.env' if not in production.
 // Production environment variables are defined in App Service Settings.
-if (process.env.NODE_ENV !== 'production') {
-    require('dotenv').config()
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
 }
 
-router.post('/create-route-graphhopper', function (req, res) {
-    try {
-        const parsedData = JSON.parse(JSON.stringify(req.body));
-        GraphhopperHelper.getRoute(parsedData)
-            .then(data => {
-                if (typeof data != 'number') {
-                    data.routeOptions = {
-                        "profile": parsedData.profile,
-                        "waypoints": parsedData.waypoints
-                    };
+router.post("/create-route-graphhopper", function (req, res) {
+  try {
+    const parsedData = JSON.parse(JSON.stringify(req.body));
+    console.log(parsedData);
+    GraphhopperHelper.getRoute(parsedData)
+      .then((data) => {
+        if (typeof data != "number") {
+          data.routeOptions = {
+            profile: parsedData.profile,
+            waypoints: parsedData.waypoints,
+          };
 
-                    res.status(200).send(data);
-                } else {
-                    // Pass status code from Graphhopper as response.
-                    res.sendStatus(data);
-                }
-            })
-            .catch(error => {
-                console.error(error);
-                res.status(500).send('Error fetching route.');
-            });
-    } catch (e) {
-        console.log("Error creating route: " + e);
-        res.status(500).send('Error creating route.');
-    }
+          res.status(200).send(data);
+        } else {
+          // Pass status code from Graphhopper as response.
+          res.sendStatus(data);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        res.status(500).send("Error fetching route.");
+      });
+  } catch (e) {
+    console.log("Error creating route: " + e);
+    res.status(500).send("Error creating route.");
+  }
 });
 
 module.exports = router;
